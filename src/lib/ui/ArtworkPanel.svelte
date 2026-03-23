@@ -79,39 +79,22 @@
 </script>
 
 <section class="artwork-shell">
-  <header class="artwork-head">
-    <div>
-      <p class="kicker">Ink output</p>
-      <h2>{direction.name}</h2>
-    </div>
-
-    <div class="stat-stack">
-      <span class:good={renderResult?.verification}>{renderResult?.verification ? "stego verified" : "awaiting render"}</span>
-      {#if renderResult}
-        <span>seed {renderResult.seedHex}</span>
-      {/if}
-    </div>
-  </header>
-
   <div class="canvas-shell">
     <canvas bind:this={canvas} aria-label={`Rendered artwork for ${direction.name}`}></canvas>
+
     <div class="overlay">
-      <span class="plain-tag">{direction.shortLabel}</span>
-      <span class="dashed-tag">{renderResult?.prompt.wordCount ?? 0} words hidden</span>
-      <span class="dotted-tag">ink only</span>
+      <span class="plain-tag">{renderResult?.verification ? "stego verified" : "rendering"}</span>
+      <span class="dashed-tag">{renderResult?.prompt.characterCount ?? 0} chars hidden</span>
     </div>
   </div>
 
   <div class="details">
-    <p class="blurb">{direction.blurb}</p>
-
     {#if renderError}
       <p class="error">{renderError}</p>
     {:else if renderResult}
       <div class="metrics">
-        <span class="plain-tag">{numberFormatter.format(renderResult.payloadBytes)} message bytes</span>
-        <span class="dashed-tag">{numberFormatter.format(renderResult.capacityBytes)} byte capacity</span>
-        <span class="dotted-tag">{renderResult.verification ? "decode confirmed" : "decode missing"}</span>
+        <span class="plain-tag">{numberFormatter.format(renderResult.payloadBytes)} bytes</span>
+        <span class="dashed-tag">{numberFormatter.format(renderResult.capacityBytes)} capacity</span>
       </div>
     {/if}
 
@@ -133,51 +116,11 @@
 
 <style>
   .artwork-shell {
-    display: grid;
-    gap: 16px;
-  }
-
-  .artwork-head {
     display: flex;
-    justify-content: space-between;
+    flex-direction: column;
     gap: 12px;
-    align-items: flex-start;
-  }
-
-  .kicker,
-  .secret-label {
-    margin: 0 0 8px;
-    color: var(--ink-faint);
-    font: 700 0.74rem/1 var(--font-mono);
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-  }
-
-  h2 {
-    margin: 0;
-    font-family: var(--font-display);
-    font-size: clamp(1.4rem, 2vw, 2rem);
-    text-transform: uppercase;
-  }
-
-  .stat-stack {
-    display: grid;
-    gap: 8px;
-    justify-items: end;
-    font: 700 0.7rem/1 var(--font-mono);
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-  }
-
-  .stat-stack span {
-    padding: 8px 10px;
-    border-radius: 999px;
-    border: 1.5px solid var(--ink);
-    background: rgba(255, 255, 255, 0.8);
-  }
-
-  .stat-stack .good {
-    border-style: dotted;
+    min-height: 0;
+    flex: 1;
   }
 
   .canvas-shell {
@@ -187,6 +130,7 @@
     border-radius: 18px;
     background: var(--paper);
     aspect-ratio: 10 / 7;
+    min-height: 0;
   }
 
   canvas {
@@ -199,7 +143,6 @@
   .overlay {
     position: absolute;
     left: 14px;
-    right: 14px;
     bottom: 14px;
     display: flex;
     flex-wrap: wrap;
@@ -208,8 +151,7 @@
   }
 
   .plain-tag,
-  .dashed-tag,
-  .dotted-tag {
+  .dashed-tag {
     padding: 8px 10px;
     border-radius: 999px;
     background: rgba(255, 255, 255, 0.92);
@@ -227,20 +169,10 @@
     border: 1.5px dashed var(--ink);
   }
 
-  .dotted-tag {
-    border: 1.5px dotted var(--ink);
-  }
-
   .details {
-    display: grid;
-    gap: 14px;
-  }
-
-  .blurb,
-  .secret-copy {
-    margin: 0;
-    color: var(--ink-soft);
-    line-height: 1.7;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
   }
 
   .metrics,
@@ -285,6 +217,20 @@
     background: rgba(255, 255, 255, 0.82);
   }
 
+  .secret-label {
+    margin: 0 0 8px;
+    color: var(--ink-faint);
+    font: 700 0.74rem/1 var(--font-mono);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+  }
+
+  .secret-copy {
+    margin: 0;
+    color: var(--ink-soft);
+    line-height: 1.7;
+  }
+
   .error {
     margin: 0;
     padding: 12px 14px;
@@ -292,11 +238,5 @@
     border-radius: 18px;
     color: var(--ink);
     background: rgba(17, 17, 17, 0.04);
-  }
-
-  @media (max-width: 640px) {
-    .artwork-head {
-      flex-direction: column;
-    }
   }
 </style>

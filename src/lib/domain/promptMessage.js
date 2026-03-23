@@ -1,4 +1,4 @@
-export const MAX_PROMPT_WORDS = 500;
+export const MAX_PROMPT_CHARACTERS = 500;
 
 const STOP_WORDS = new Set([
   "a",
@@ -38,9 +38,8 @@ const STOP_WORDS = new Set([
   "your",
 ]);
 
-export function countWords(text) {
-  const normalizedText = String(text ?? "").trim();
-  return normalizedText.length === 0 ? 0 : normalizedText.split(/\s+/).length;
+export function countCharacters(text) {
+  return String(text ?? "").replace(/\s+/g, " ").trim().length;
 }
 
 export function createPromptMessage(text) {
@@ -55,10 +54,11 @@ export function createPromptMessage(text) {
   return {
     text: sourceText,
     normalizedText,
+    characterCount: normalizedText.length,
+    remainingCharacters: MAX_PROMPT_CHARACTERS - normalizedText.length,
     wordCount: words.length,
-    remainingWords: MAX_PROMPT_WORDS - words.length,
     isEmpty: normalizedText.length === 0,
-    isWithinLimit: words.length <= MAX_PROMPT_WORDS,
+    isWithinLimit: normalizedText.length <= MAX_PROMPT_CHARACTERS,
     focusTokens: buildFocusTokens(cleanedWords),
     cadence: {
       averageWordLength: cleanedWords.length === 0 ? 0 : totalLetters / cleanedWords.length,

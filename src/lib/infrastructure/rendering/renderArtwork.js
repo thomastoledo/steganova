@@ -5,6 +5,16 @@ const TAU = Math.PI * 2;
 const INK = "#111111";
 const PAPER = "#fcfcfa";
 const PAPER_SHADE = "#f0f0eb";
+const CHARACTER_OBJECT_MAPPING = Object.freeze([
+  { id: "celestial", characters: ["o", "q"], objects: ["sun", "moon", "pond"] },
+  { id: "mountains", characters: ["m", "n", "v", "w"], objects: ["mountains", "hills"] },
+  { id: "figures", characters: ["i", "l", "t"], objects: ["characters"] },
+  { id: "trees", characters: ["f", "h", "k", "y"], objects: ["trees"] },
+  { id: "houses", characters: ["a", "e", "r"], objects: ["houses"] },
+  { id: "flowers", characters: ["s", "c"], objects: ["flowers", "clouds"] },
+  { id: "birds", characters: ["x", "z", "j", "p"], objects: ["birds", "kites"] },
+  { id: "water", characters: ["u", "w"], objects: ["ponds", "rivers"] },
+]);
 
 export function renderArtworkScene({
   canvas,
@@ -73,8 +83,11 @@ function buildScenePlan(prompt, random, width, height) {
     tokens.add(token);
   }
 
-  const hasWater = hasAnyToken(tokens, ["sea", "ocean", "river", "lake", "pond", "water"]);
-  const hasNight = hasAnyToken(tokens, ["night", "moon", "star", "stars", "space"]);
+  const profile = buildCharacterProfile(prompt.normalizedText);
+  const hasWater = hasAnyToken(tokens, ["sea", "ocean", "river", "lake", "pond", "water"]) || profile.waterRatio > 0.03;
+  const hasNight =
+    hasAnyToken(tokens, ["night", "moon", "star", "stars", "space"]) ||
+    (profile.punctuationCount >= 2 && profile.celestialRatio > 0.02);
   const hasMountain = hasAnyToken(tokens, ["mountain", "mountains", "hill", "hills", "peak"]);
   const hasVillage = hasAnyToken(tokens, ["village", "town", "city", "street", "houses"]);
   const hasGarden = hasAnyToken(tokens, ["flower", "flowers", "garden", "field"]);
@@ -82,14 +95,21 @@ function buildScenePlan(prompt, random, width, height) {
   const hasSpaceToy = hasAnyToken(tokens, ["rocket", "planet", "saturn", "moon", "star"]);
 
   const horizonY = height * random.range(0.62, 0.7);
-  const houseCount = hasVillage ? random.int(2, 3) : 1;
+  const houseCount = hasVillage ? random.int(2, 3) : scaleCount(profile.houseRatio, 1, 3, 11);
   const treeCount = hasAnyToken(tokens, ["tree", "trees", "forest", "woods", "garden"])
     ? random.int(3, 5)
-    : random.int(1, 3);
+    : scaleCount(profile.treeRatio + profile.figureRatio * 0.35, 1, 5, 11);
   const figureCount = hasAnyToken(tokens, ["child", "children", "family", "people", "person", "friend"])
     ? random.int(2, 4)
-    : random.int(1, 2);
-  const flowerCount = hasGarden ? random.int(6, 10) : random.int(2, 5);
+    : scaleCount(profile.figureRatio, 1, 4, 12);
+  const flowerCount = hasGarden
+    ? random.int(6, 10)
+    : scaleCount(profile.flowerRatio + profile.cloudRatio * 0.3, 2, 9, 18);
+  const mountainCount = hasMountain ? scaleCount(profile.mountainRatio, 3, 6, 16) : scaleCount(profile.mountainRatio, 2, 5, 14);
+  const cloudCount = scaleCount(profile.cloudRatio + profile.celestialRatio * 0.25, 1, 4, 10);
+  const skyMarkCount = hasNight
+    ? scaleCount(profile.birdRatio + profile.celestialRatio * 0.4, 6, 14, 18)
+    : scaleCount(profile.birdRatio, 2, 7, 16);
 
   return {
     tokens,
@@ -98,15 +118,19 @@ function buildScenePlan(prompt, random, width, height) {
     treeCount,
     figureCount,
     flowerCount,
+    mountainCount,
+    cloudCount,
+    skyMarkCount,
     animal: hasAnimal,
     hasWater,
     hasNight,
     hasMountain,
     hasSpaceToy,
+    smallGeometryType: hasSpaceToy ? "planet" : "kite",
     sun: {
       x: width * random.range(0.16, 0.82),
       y: height * random.range(0.14, 0.24),
-      radius: width * random.range(0.055, 0.08),
+      radius: width * clamp(0.05 + profile.celestialRatio * 0.16, 0.05, 0.085),
     },
     caption: prompt.focusTokens.slice(0, 3).join(" · "),
   };
@@ -172,40 +196,58 @@ function paintSunOrMoon(context, scene, random) {
   const { x, y, radius } = scene.sun;
 
   context.save();
-  context.fillStyle = scene.hasNight ? PAPER_SHADE : "rgba(17,17,17,0.06)";
-  context.beginPath();
-  context.arc(x, y, radius, 0, TAU);
-  context.fill();
-
-  strokeWithMode(context, "plain", 3, () => {
+  if (scene.hasNight) {
+    context.fillStyle = PAPER_SHADE;
     context.beginPath();
     context.arc(x, y, radius, 0, TAU);
-    context.stroke();
-  });
+    context.fill();
 
-  const rayCount = scene.hasNight ? 10 : 14;
-  for (let index = 0; index < rayCount; index += 1) {
-    const angle = (index / rayCount) * TAU;
-    const inner = radius * 1.18;
-    const outer = radius * random.range(1.7, 2.3);
-    drawSketchLine(
-      context,
-      x + Math.cos(angle) * inner,
-      y + Math.sin(angle) * inner,
-      x + Math.cos(angle) * outer,
-      y + Math.sin(angle) * outer,
-      random,
-      scene.hasNight ? "dotted" : index % 2 === 0 ? "plain" : "dashed",
-      2,
-    );
+    context.fillStyle = PAPER;
+    context.beginPath();
+    context.arc(x + radius * 0.34, y - radius * 0.08, radius * 0.82, 0, TAU);
+    context.fill();
+
+    strokeWithMode(context, "plain", 3, () => {
+      context.beginPath();
+      context.arc(x, y, radius, 0, TAU);
+      context.stroke();
+    });
+  } else {
+    context.fillStyle = "rgba(17,17,17,0.06)";
+    context.beginPath();
+    context.arc(x, y, radius, 0, TAU);
+    context.fill();
+
+    strokeWithMode(context, "plain", 3, () => {
+      context.beginPath();
+      context.arc(x, y, radius, 0, TAU);
+      context.stroke();
+    });
+
+    for (let index = 0; index < 14; index += 1) {
+      const angle = (index / 14) * TAU;
+      const inner = radius * 1.18;
+      const outer = radius * random.range(1.7, 2.3);
+      drawSketchLine(
+        context,
+        x + Math.cos(angle) * inner,
+        y + Math.sin(angle) * inner,
+        x + Math.cos(angle) * outer,
+        y + Math.sin(angle) * outer,
+        random,
+        index % 2 === 0 ? "plain" : "dashed",
+        2,
+      );
+    }
   }
   context.restore();
 }
 
 function paintClouds(context, scene, random) {
-  const cloudCount = random.int(2, 4);
+  const cloudCount = scene.cloudCount;
   for (let index = 0; index < cloudCount; index += 1) {
-    const x = 230 + index * 320 + random.range(-70, 70);
+    const spread = cloudCount === 1 ? 0 : 980 / (cloudCount - 1);
+    const x = cloudCount === 1 ? 800 : 240 + index * spread + random.range(-60, 60);
     const y = 180 + random.range(-45, 60);
     const width = random.range(120, 180);
     const height = random.range(34, 50);
@@ -214,7 +256,7 @@ function paintClouds(context, scene, random) {
 }
 
 function paintBirdsAndStars(context, scene, random) {
-  const skyMarks = scene.hasNight ? random.int(12, 18) : random.int(3, 6);
+  const skyMarks = scene.skyMarkCount;
   for (let index = 0; index < skyMarks; index += 1) {
     const x = random.range(120, 1480);
     const y = random.range(110, 360);
@@ -227,7 +269,7 @@ function paintBirdsAndStars(context, scene, random) {
 }
 
 function paintMountains(context, scene, random) {
-  const peakCount = scene.hasMountain ? random.int(4, 6) : random.int(2, 3);
+  const peakCount = scene.mountainCount;
   const baseY = scene.horizonY - 110;
   const span = 1500 / peakCount;
 
@@ -358,7 +400,7 @@ function paintAnimal(context, scene, random) {
 }
 
 function paintSmallGeometry(context, scene, random) {
-  if (scene.hasSpaceToy) {
+  if (scene.smallGeometryType === "planet") {
     drawRingedPlanet(context, 1280, 240, 1, random);
   } else {
     drawKite(context, 1280, 260, 1, random);
@@ -708,6 +750,48 @@ function pickAnimal(tokens) {
     return "fish";
   }
   return null;
+}
+
+function buildCharacterProfile(text) {
+  const normalized = String(text ?? "").toLowerCase();
+  const characterPool = normalized.match(/[a-z0-9]/g) ?? [];
+  const denominator = Math.max(characterPool.length, 1);
+  const punctuationCount = normalized.match(/[.,;:!?]/g)?.length ?? 0;
+
+  return {
+    punctuationCount,
+    celestialRatio: ratioForGroup(characterPool, denominator, "celestial"),
+    mountainRatio: ratioForGroup(characterPool, denominator, "mountains"),
+    figureRatio: ratioForGroup(characterPool, denominator, "figures"),
+    treeRatio: ratioForGroup(characterPool, denominator, "trees"),
+    houseRatio: ratioForGroup(characterPool, denominator, "houses"),
+    flowerRatio: ratioForGroup(characterPool, denominator, "flowers"),
+    birdRatio: ratioForGroup(characterPool, denominator, "birds"),
+    cloudRatio:
+      ratioForGroup(characterPool, denominator, "water") * 0.35 +
+      ratioForGroup(characterPool, denominator, "flowers") * 0.65,
+    waterRatio: ratioForGroup(characterPool, denominator, "water"),
+  };
+}
+
+function ratioForGroup(characterPool, denominator, groupId) {
+  const mapping = CHARACTER_OBJECT_MAPPING.find((entry) => entry.id === groupId);
+  if (!mapping) {
+    return 0;
+  }
+
+  let matches = 0;
+  for (const character of characterPool) {
+    if (mapping.characters.includes(character)) {
+      matches += 1;
+    }
+  }
+
+  return matches / denominator;
+}
+
+function scaleCount(ratio, min, max, multiplier) {
+  return clamp(Math.round(min + ratio * multiplier), min, max);
 }
 
 function jitter(value, random, amount) {

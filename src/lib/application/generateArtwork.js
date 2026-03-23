@@ -1,4 +1,4 @@
-import { MAX_PROMPT_WORDS, createPromptMessage } from "../domain/promptMessage.js";
+import { MAX_PROMPT_CHARACTERS, createPromptMessage } from "../domain/promptMessage.js";
 import { getArtDirectionById } from "../domain/artDirections.js";
 import { renderArtworkScene } from "../infrastructure/rendering/renderArtwork.js";
 import { decodeMessageFromCanvas, encodeMessageInCanvas } from "../infrastructure/steganography/canvasSteganography.js";
@@ -14,7 +14,7 @@ export function generateArtwork({
 }) {
   const prompt = createPromptMessage(text);
   if (!prompt.isWithinLimit) {
-    throw new Error(`Keep the message under ${MAX_PROMPT_WORDS} words.`);
+    throw new Error(`Keep the message under ${MAX_PROMPT_CHARACTERS} characters.`);
   }
 
   const direction = getArtDirectionById(directionId);
