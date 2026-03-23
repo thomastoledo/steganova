@@ -3,9 +3,8 @@
   import ImageDecodePanel from "./lib/ui/ImageDecodePanel.svelte";
   import { createPromptMessage, MAX_PROMPT_CHARACTERS } from "./lib/domain/promptMessage.js";
 
-  const DIRECTION_ID = "naive-ink";
   const DEFAULT_PROMPT =
-    "A little house, a round sun, two children, a tree, a pond and three birds over a hill.";
+    "A burning orange ring above a cyan plume, a magenta corridor, gold orbit lines and a lone monolith in cosmic dust.";
 
   let activeMode = "generate";
   let draftText = DEFAULT_PROMPT;
@@ -40,7 +39,7 @@
   <title>Steganova</title>
   <meta
     name="description"
-    content="Generate one naive ink drawing or upload a PNG to decipher its hidden message."
+    content="Generate one psychedelic supernova image or upload a PNG to decipher its hidden message."
   />
 </svelte:head>
 
@@ -56,7 +55,7 @@
         activeMode = "generate";
       }}
     >
-      Draw
+      Generate
     </button>
     <button
       class:active={activeMode === "decode"}
@@ -78,7 +77,7 @@
         <div class="section-head">
           <div>
             <p class="section-kicker">Prompt</p>
-            <h1>Describe the little scene</h1>
+            <h1>Describe the detonation</h1>
           </div>
           <span class="side-note">{draftPrompt.characterCount} / {MAX_PROMPT_CHARACTERS}</span>
         </div>
@@ -89,13 +88,13 @@
           class:invalid={!draftPrompt.isWithinLimit}
           class="prompt-area"
           spellcheck="false"
-          placeholder="A little house near a tree, a kite in the sky, three flowers and one cat."
+          placeholder="An orange ring over a cyan cloud, a pink corridor, orbit lines and a lone tower."
         ></textarea>
 
         <p class="section-note">500 characters max. The exact sentence is hidden inside the PNG export.</p>
 
         <div class="button-row">
-          <button class="action primary" on:click={drawScene} disabled={generationDisabled}>Draw</button>
+          <button class="action primary" on:click={drawScene} disabled={generationDisabled}>Generate</button>
           <button class="action secondary" on:click={remixScene}>Remix</button>
           <button class="action ghost" on:click={restorePrompt}>Reset</button>
         </div>
@@ -105,12 +104,12 @@
         <div class="section-head">
           <div>
             <p class="section-kicker">Result</p>
-            <h2>Single rendered drawing</h2>
+            <h2>One supernova render</h2>
           </div>
           <span class="side-note">variant {variant + 1}</span>
         </div>
 
-        <ArtworkPanel directionId={DIRECTION_ID} promptText={appliedText} variant={variant} />
+        <ArtworkPanel promptText={appliedText} variant={variant} />
 
         <p class="footer-note">Hidden payload length: {appliedPrompt.characterCount} characters.</p>
       </section>

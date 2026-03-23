@@ -1,15 +1,16 @@
 :root {
-  --paper: #fcfcfa;
-  --paper-soft: #f2f2ee;
-  --ink: #111111;
-  --ink-soft: #3a3a3a;
-  --ink-faint: #7a7a7a;
-  --line: rgba(17, 17, 17, 0.22);
-  --line-strong: rgba(17, 17, 17, 0.45);
-  --shadow: rgba(17, 17, 17, 0.08);
-  --font-display: "Georgia", "Times New Roman", serif;
-  --font-body: "Helvetica Neue", Arial, sans-serif;
-  --font-mono: "IBM Plex Mono", "Courier New", monospace;
+  --paper: #060814;
+  --paper-soft: #0c1124;
+  --paper-deep: #04050d;
+  --ink: #f7f2ff;
+  --ink-soft: #ddd6ff;
+  --ink-faint: #9b94c6;
+  --line: rgba(247, 242, 255, 0.14);
+  --line-strong: rgba(247, 242, 255, 0.3);
+  --shadow: rgba(0, 0, 0, 0.45);
+  --font-display: "Space Grotesk", "Avenir Next", "Segoe UI", sans-serif;
+  --font-body: "IBM Plex Sans", "Avenir Next", "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", "SFMono-Regular", monospace;
 }
 
 * {
@@ -27,16 +28,10 @@ body {
   color: var(--ink);
   font-family: var(--font-body);
   background:
-    radial-gradient(circle at 20% 20%, rgba(17, 17, 17, 0.035), transparent 25%),
-    linear-gradient(180deg, rgba(17, 17, 17, 0.018), transparent 14%),
-    repeating-linear-gradient(
-      0deg,
-      transparent 0,
-      transparent 27px,
-      rgba(17, 17, 17, 0.03) 27px,
-      rgba(17, 17, 17, 0.03) 28px
-    ),
-    var(--paper);
+    radial-gradient(circle at 52% 16%, rgba(255, 156, 0, 0.18), transparent 14%),
+    radial-gradient(circle at 61% 34%, rgba(120, 236, 255, 0.12), transparent 16%),
+    radial-gradient(circle at 34% 82%, rgba(255, 99, 216, 0.14), transparent 20%),
+    linear-gradient(180deg, #060913 0%, #070610 36%, #03040b 100%);
 }
 
 body::before {
@@ -44,12 +39,22 @@ body::before {
   position: fixed;
   inset: 0;
   background-image:
-    radial-gradient(circle, rgba(17, 17, 17, 0.08) 0.8px, transparent 0.9px),
-    radial-gradient(circle, rgba(17, 17, 17, 0.04) 0.7px, transparent 0.8px);
-  background-position: 0 0, 13px 13px;
-  background-size: 26px 26px;
-  opacity: 0.12;
+    radial-gradient(circle, rgba(255, 255, 255, 0.8) 0.7px, transparent 0.8px),
+    radial-gradient(circle, rgba(129, 234, 255, 0.44) 0.8px, transparent 0.9px),
+    radial-gradient(circle, rgba(255, 145, 0, 0.24) 1px, transparent 1.1px);
+  background-size: 120px 120px, 180px 180px, 220px 220px;
+  background-position: 0 0, 30px 80px, 90px 30px;
+  opacity: 0.22;
   pointer-events: none;
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  inset: 20px;
+  pointer-events: none;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
 }
 
 button,
@@ -60,9 +65,9 @@ textarea {
 .page-shell {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  width: min(1280px, calc(100vw - 24px));
-  height: min(880px, calc(100vh - 24px));
+  gap: 14px;
+  width: min(1320px, calc(100vw - 24px));
+  height: min(920px, calc(100vh - 24px));
   margin: 12px auto;
 }
 
@@ -72,29 +77,33 @@ textarea {
 }
 
 .mode-tab {
-  min-height: 42px;
+  min-height: 44px;
   padding: 0 16px;
   border-radius: 999px;
-  border: 2px solid var(--ink);
-  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid var(--line-strong);
+  background: rgba(8, 11, 24, 0.72);
   color: var(--ink);
   font: 700 0.74rem/1 var(--font-mono);
-  letter-spacing: 0.12em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   cursor: pointer;
   transition:
     transform 120ms ease,
-    background 120ms ease;
+    background 120ms ease,
+    border-color 120ms ease;
 }
 
 .mode-tab:hover {
   transform: translateY(-1px);
-  background: rgba(17, 17, 17, 0.04);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .mode-tab.active {
-  background: var(--ink);
-  color: var(--paper);
+  border-color: rgba(255, 216, 141, 0.9);
+  background:
+    linear-gradient(135deg, rgba(255, 125, 221, 0.18), rgba(127, 234, 255, 0.18)),
+    rgba(9, 12, 24, 0.88);
+  box-shadow: 0 0 24px rgba(255, 153, 36, 0.14);
 }
 
 .composer-panel,
@@ -103,17 +112,22 @@ textarea {
   flex-direction: column;
   min-height: 0;
   padding: 18px;
-  border-radius: 20px;
-  background: rgba(255, 255, 255, 0.72);
-  box-shadow: 0 18px 40px var(--shadow);
+  border-radius: 22px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent 26%),
+    rgba(8, 11, 24, 0.74);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.03),
+    0 24px 60px var(--shadow);
+  backdrop-filter: blur(18px);
 }
 
 .plain-frame {
-  border: 2px solid var(--ink);
+  border: 1px solid var(--line-strong);
 }
 
 .dashed-frame {
-  border: 2px dashed var(--ink);
+  border: 1px dashed rgba(127, 234, 255, 0.4);
 }
 
 .workspace-grid {
@@ -145,9 +159,9 @@ textarea {
 .section-head h2 {
   margin: 0;
   font-family: var(--font-display);
-  font-size: clamp(1.6rem, 2.3vw, 2.2rem);
+  font-size: clamp(1.8rem, 2.5vw, 2.45rem);
   font-weight: 700;
-  line-height: 1.04;
+  line-height: 0.98;
 }
 
 .side-note {
@@ -156,8 +170,8 @@ textarea {
   justify-content: center;
   padding: 8px 12px;
   border-radius: 999px;
-  border: 1.5px solid var(--ink);
-  background: var(--paper);
+  border: 1px solid rgba(255, 216, 141, 0.68);
+  background: rgba(8, 10, 22, 0.82);
   color: var(--ink);
   font: 700 0.72rem/1 var(--font-mono);
   letter-spacing: 0.12em;
@@ -169,29 +183,34 @@ textarea {
   flex: 1;
   min-height: 0;
   padding: 16px;
-  border: 2px solid var(--ink);
+  border: 1px solid var(--line-strong);
   border-radius: 18px;
   resize: none;
   background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent 24%),
     repeating-linear-gradient(
       180deg,
       transparent 0,
-      transparent 32px,
-      rgba(17, 17, 17, 0.04) 32px,
-      rgba(17, 17, 17, 0.04) 33px
+      transparent 31px,
+      rgba(255, 255, 255, 0.04) 31px,
+      rgba(255, 255, 255, 0.04) 32px
     ),
-    rgba(255, 255, 255, 0.92);
+    rgba(5, 8, 18, 0.82);
   color: var(--ink);
   font: 500 1rem/1.7 var(--font-body);
+  box-shadow: inset 0 0 40px rgba(255, 121, 221, 0.04);
 }
 
 .prompt-area.invalid {
-  border-style: dotted;
+  border-style: dashed;
+  border-color: rgba(255, 121, 221, 0.68);
 }
 
 .prompt-area:focus {
   outline: none;
-  box-shadow: 0 0 0 4px rgba(17, 17, 17, 0.06);
+  box-shadow:
+    inset 0 0 40px rgba(255, 121, 221, 0.06),
+    0 0 0 3px rgba(127, 234, 255, 0.12);
 }
 
 .section-note,
@@ -212,19 +231,20 @@ textarea {
   padding: 0 16px;
   border-radius: 999px;
   cursor: pointer;
-  background: transparent;
+  background: rgba(6, 8, 18, 0.62);
   color: var(--ink);
   font: 700 0.74rem/1 var(--font-mono);
   letter-spacing: 0.12em;
   text-transform: uppercase;
   transition:
     transform 120ms ease,
-    background 120ms ease;
+    background 120ms ease,
+    border-color 120ms ease;
 }
 
 .action:hover:not(:disabled) {
   transform: translateY(-1px);
-  background: rgba(17, 17, 17, 0.04);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .action:disabled {
@@ -233,25 +253,25 @@ textarea {
 }
 
 .action.primary {
-  border: 2px solid var(--ink);
+  border: 1px solid rgba(255, 216, 141, 0.82);
 }
 
 .action.secondary {
-  border: 2px dashed var(--ink);
+  border: 1px dashed rgba(127, 234, 255, 0.6);
 }
 
 .action.ghost {
-  border: 2px dotted var(--ink);
+  border: 1px dotted rgba(255, 121, 221, 0.62);
 }
 
 .footer-note {
   margin-top: 10px;
   padding-top: 10px;
-  border-top: 1px dashed var(--line-strong);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
   font-size: 0.95rem;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 980px) {
   .page-shell {
     height: auto;
     min-height: 0;
@@ -259,26 +279,10 @@ textarea {
 
   .workspace-grid {
     grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width: 640px) {
-  .page-shell {
-    width: min(100vw - 16px, 1280px);
-    margin-top: 8px;
-  }
-
-  .composer-panel,
-  .result-panel {
-    padding: 16px;
-    border-radius: 18px;
-  }
-
-  .section-head {
-    flex-direction: column;
+    height: auto;
   }
 
   .prompt-area {
-    min-height: 220px;
+    min-height: 240px;
   }
 }

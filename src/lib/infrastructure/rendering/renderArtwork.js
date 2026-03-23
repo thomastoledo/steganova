@@ -1,55 +1,58 @@
 import { createSeededRandom } from "../random/createSeededRandom.js";
 import { hashTextToSeed } from "../random/hashTextToSeed.js";
+import { getPalette } from "./paletteCatalog.js";
 
 const TAU = Math.PI * 2;
-const INK = "#111111";
-const PAPER = "#fcfcfa";
-const PAPER_SHADE = "#f0f0eb";
-const CHARACTER_OBJECT_MAPPING = Object.freeze([
-  { id: "celestial", characters: ["o", "q"], objects: ["sun", "moon", "pond"] },
-  { id: "mountains", characters: ["m", "n", "v", "w"], objects: ["mountains", "hills"] },
-  { id: "figures", characters: ["i", "l", "t"], objects: ["characters"] },
-  { id: "trees", characters: ["f", "h", "k", "y"], objects: ["trees"] },
-  { id: "houses", characters: ["a", "e", "r"], objects: ["houses"] },
-  { id: "flowers", characters: ["s", "c"], objects: ["flowers", "clouds"] },
-  { id: "birds", characters: ["x", "z", "j", "p"], objects: ["birds", "kites"] },
-  { id: "water", characters: ["u", "w"], objects: ["ponds", "rivers"] },
-]);
+const PALETTE_KEYS = ["supernova", "atlas", "synapse", "tectonic"];
+const FEATURE_CHARACTERS = Object.freeze({
+  ring: "oq0c",
+  orbit: "aer",
+  nebula: "mnuw",
+  pillar: "ilt1",
+  shards: "pvyk",
+  sparks: "sxzj",
+  nodes: "dbg8",
+  void: "fh",
+});
+const SIGNAL_COLORS = Object.freeze({
+  pink: "#ff79dd",
+  violet: "#ab82ff",
+  deepViolet: "#6b57ff",
+  orange: "#ff9a24",
+  gold: "#ffd88d",
+  cream: "#fff6dc",
+  cyan: "#7feaff",
+});
 
 export function renderArtworkScene({
   canvas,
   prompt,
-  direction,
   variant = 0,
   width = 1600,
   height = 1120,
   pixelRatio = 1,
 }) {
   const context = setupCanvas(canvas, width, height, pixelRatio);
-  const seed = hashTextToSeed(`${prompt.normalizedText}|${direction.id}|${variant}`);
+  const seed = hashTextToSeed(`${prompt.normalizedText}|supernova|${variant}`);
   const random = createSeededRandom(seed);
-  const scene = buildScenePlan(prompt, random, width, height);
+  const scene = buildScenePlan(prompt, random, width, height, variant);
 
   context.clearRect(0, 0, width, height);
-  paintPaper(context, width, height, random);
-  paintFrame(context, width, height, random);
-  paintSunOrMoon(context, scene, random);
-  paintClouds(context, scene, random);
-  paintBirdsAndStars(context, scene, random);
-  paintMountains(context, scene, random);
-  paintGround(context, scene, random);
-  paintWater(context, scene, random);
-  paintHouseCluster(context, scene, random);
-  paintTrees(context, scene, random);
-  paintFigures(context, scene, random);
-  paintFlowers(context, scene, random);
-  paintAnimal(context, scene, random);
-  paintSmallGeometry(context, scene, random);
-  paintCaption(context, prompt, width, height);
+  paintBackdrop(context, scene, width, height, random);
+  paintStarfield(context, scene, width, height, random);
+  paintInterfaceGrid(context, scene, width, height, random);
+  paintOrbitLines(context, scene, width, height, random);
+  paintSupernova(context, scene, random);
+  paintBeam(context, scene, width, height, random);
+  paintPlume(context, scene, random);
+  paintShards(context, scene, random);
+  paintMonoliths(context, scene, random);
+  paintDustHorizon(context, scene, width, height, random);
 
   return {
     seed,
     seedHex: seed.toString(16).padStart(8, "0"),
+    paletteKey: scene.paletteKey,
     width,
     height,
   };
@@ -72,732 +75,611 @@ function setupCanvas(canvas, width, height, pixelRatio) {
   return context;
 }
 
-function buildScenePlan(prompt, random, width, height) {
+function buildScenePlan(prompt, random, width, height, variant) {
+  const normalizedText = prompt.normalizedText.toLowerCase();
   const tokens = new Set(
-    prompt.normalizedText
-      .toLowerCase()
+    normalizedText
       .split(/[^a-z0-9]+/g)
       .filter(Boolean),
   );
+
   for (const token of prompt.focusTokens) {
     tokens.add(token);
   }
 
-  const profile = buildCharacterProfile(prompt.normalizedText);
-  const hasWater = hasAnyToken(tokens, ["sea", "ocean", "river", "lake", "pond", "water"]) || profile.waterRatio > 0.03;
-  const hasNight =
-    hasAnyToken(tokens, ["night", "moon", "star", "stars", "space"]) ||
-    (profile.punctuationCount >= 2 && profile.celestialRatio > 0.02);
-  const hasMountain = hasAnyToken(tokens, ["mountain", "mountains", "hill", "hills", "peak"]);
-  const hasVillage = hasAnyToken(tokens, ["village", "town", "city", "street", "houses"]);
-  const hasGarden = hasAnyToken(tokens, ["flower", "flowers", "garden", "field"]);
-  const hasAnimal = pickAnimal(tokens);
-  const hasSpaceToy = hasAnyToken(tokens, ["rocket", "planet", "saturn", "moon", "star"]);
-
-  const horizonY = height * random.range(0.62, 0.7);
-  const houseCount = hasVillage ? random.int(2, 3) : scaleCount(profile.houseRatio, 1, 3, 11);
-  const treeCount = hasAnyToken(tokens, ["tree", "trees", "forest", "woods", "garden"])
-    ? random.int(3, 5)
-    : scaleCount(profile.treeRatio + profile.figureRatio * 0.35, 1, 5, 11);
-  const figureCount = hasAnyToken(tokens, ["child", "children", "family", "people", "person", "friend"])
-    ? random.int(2, 4)
-    : scaleCount(profile.figureRatio, 1, 4, 12);
-  const flowerCount = hasGarden
-    ? random.int(6, 10)
-    : scaleCount(profile.flowerRatio + profile.cloudRatio * 0.3, 2, 9, 18);
-  const mountainCount = hasMountain ? scaleCount(profile.mountainRatio, 3, 6, 16) : scaleCount(profile.mountainRatio, 2, 5, 14);
-  const cloudCount = scaleCount(profile.cloudRatio + profile.celestialRatio * 0.25, 1, 4, 10);
-  const skyMarkCount = hasNight
-    ? scaleCount(profile.birdRatio + profile.celestialRatio * 0.4, 6, 14, 18)
-    : scaleCount(profile.birdRatio, 2, 7, 16);
+  const profile = buildCharacterProfile(normalizedText);
+  const paletteKey = pickPaletteKey(tokens, normalizedText, variant);
+  const palette = getPalette(paletteKey);
+  const ringBoost = keywordBoost(tokens, ["ring", "portal", "halo", "sun", "supernova"], 0.03);
+  const orbitBoost = keywordBoost(tokens, ["orbit", "wave", "line", "arc"], 0.02);
+  const plumeBoost = keywordBoost(tokens, ["cloud", "smoke", "plume", "dust", "nebula"], 0.03);
+  const shardBoost = keywordBoost(tokens, ["beam", "prism", "triangle", "shard"], 0.03);
+  const pillarBoost = keywordBoost(tokens, ["tower", "gate", "door", "monolith", "pillar"], 0.03);
+  const twinRing = hasAnyToken(tokens, ["twin", "double", "binary"]) || profile.ring > 0.09;
+  const centerX = width * random.range(0.48, 0.56);
+  const centerY = height * random.range(0.2, 0.31);
+  const ringRadius = width * clamp(0.14 + profile.ring * 0.24 + ringBoost, 0.14, 0.26);
+  const ringThickness = width * clamp(0.018 + (profile.nebula + profile.sparks) * 0.06, 0.022, 0.072);
+  const beamBaseY = height * random.range(0.8, 0.87);
+  const beamBaseX = width * random.range(0.1, 0.2);
+  const beamWidth = width * clamp(0.14 + profile.pillar * 0.18, 0.14, 0.24);
+  const beamTipX = centerX * random.range(0.78, 0.92);
+  const beamTipY = height * random.range(0.55, 0.68);
+  const monolithHeight = height * clamp(0.2 + profile.pillar * 0.44, 0.22, 0.34);
+  const monolithWidth = width * clamp(0.068 + profile.nodes * 0.18, 0.07, 0.11);
+  const monolithX = beamBaseX + beamWidth * random.range(0.86, 1.14);
+  const monolithY = beamBaseY - monolithHeight * random.range(1.0, 1.16);
 
   return {
-    tokens,
-    horizonY,
-    houseCount,
-    treeCount,
-    figureCount,
-    flowerCount,
-    mountainCount,
-    cloudCount,
-    skyMarkCount,
-    animal: hasAnimal,
-    hasWater,
-    hasNight,
-    hasMountain,
-    hasSpaceToy,
-    smallGeometryType: hasSpaceToy ? "planet" : "kite",
-    sun: {
-      x: width * random.range(0.16, 0.82),
-      y: height * random.range(0.14, 0.24),
-      radius: width * clamp(0.05 + profile.celestialRatio * 0.16, 0.05, 0.085),
+    paletteKey,
+    palette,
+    profile,
+    centerX,
+    centerY,
+    ringRadius,
+    ringThickness,
+    ringCount: twinRing ? 2 : 1,
+    starCount: scaleCount(profile.sparks + prompt.cadence.punctuationDensity * 1.8, 180, 520, 0.16),
+    orbitCount: scaleCount(profile.orbit + orbitBoost, 2, 6, 0.08),
+    interfaceCount: scaleCount(profile.nodes + profile.orbit * 0.25, 4, 10, 0.12),
+    plumeDensity: scaleCount(profile.nebula + plumeBoost + prompt.cadence.vowelRatio * 0.12, 1200, 3200, 0.24),
+    dustDensity: scaleCount(profile.nebula + profile.ring * 0.45, 900, 2600, 0.22),
+    shardCount: scaleCount(profile.shards + shardBoost, 7, 26, 0.08),
+    monolithCount: scaleCount(profile.pillar + pillarBoost, 1, 3, 0.07),
+    beam: {
+      leftBase: { x: beamBaseX, y: beamBaseY },
+      rightBase: { x: beamBaseX + beamWidth * 1.55, y: beamBaseY },
+      leftTip: { x: beamTipX - beamWidth * 0.18, y: beamTipY + beamWidth * 0.16 },
+      rightTip: { x: beamTipX + beamWidth * 0.14, y: beamTipY - beamWidth * 0.12 },
     },
-    caption: prompt.focusTokens.slice(0, 3).join(" · "),
+    plumeCurve: {
+      start: { x: centerX + ringRadius * 0.78, y: centerY + ringRadius * 0.56 },
+      control: { x: centerX + width * 0.1, y: centerY + height * 0.22 },
+      end: { x: centerX + width * 0.02, y: height * random.range(0.52, 0.7) },
+    },
+    shardCurve: {
+      start: { x: centerX + ringRadius * 0.22, y: centerY + ringRadius * 1.02 },
+      control: { x: centerX - width * 0.02, y: height * 0.62 },
+      end: { x: beamBaseX + beamWidth * 0.9, y: beamBaseY - height * 0.14 },
+    },
+    accretionTilt: random.range(-0.18, 0.14),
+    monolith: {
+      x: monolithX,
+      y: monolithY,
+      width: monolithWidth,
+      height: monolithHeight,
+    },
   };
 }
 
-function paintPaper(context, width, height, random) {
-  context.fillStyle = PAPER;
+function paintBackdrop(context, scene, width, height, random) {
+  const background = context.createLinearGradient(0, 0, 0, height);
+  for (const [stop, color] of scene.palette.sky) {
+    background.addColorStop(stop, color);
+  }
+  context.fillStyle = background;
   context.fillRect(0, 0, width, height);
 
+  paintGlow(
+    context,
+    scene.centerX,
+    scene.centerY - scene.ringRadius * 0.2,
+    scene.ringRadius * 1.55,
+    hexToRgba(SIGNAL_COLORS.orange, 0.22),
+  );
+  paintGlow(
+    context,
+    scene.centerX + scene.ringRadius * 0.8,
+    scene.centerY + scene.ringRadius * 0.9,
+    scene.ringRadius * 1.2,
+    hexToRgba(SIGNAL_COLORS.cyan, 0.18),
+  );
+  paintGlow(
+    context,
+    lerp(scene.beam.leftBase.x, scene.beam.leftTip.x, 0.34),
+    lerp(scene.beam.leftBase.y, scene.beam.leftTip.y, 0.34) - 60,
+    380,
+    hexToRgba(SIGNAL_COLORS.pink, 0.14),
+  );
+
   context.save();
-  context.fillStyle = "rgba(17,17,17,0.04)";
-  for (let index = 0; index < 450; index += 1) {
+  for (let index = 0; index < 1200; index += 1) {
     const x = random.range(0, width);
     const y = random.range(0, height);
-    const radius = random.range(0.3, 1.1);
-    context.beginPath();
-    context.arc(x, y, radius, 0, TAU);
-    context.fill();
+    const alpha = random.range(0.018, 0.06);
+    const size = random.range(0.5, 1.4);
+    context.fillStyle = hexToRgba(random.pick(scene.palette.lines), alpha);
+    context.fillRect(x, y, size, size);
   }
   context.restore();
+}
+
+function paintStarfield(context, scene, width, height, random) {
+  context.save();
+
+  for (let index = 0; index < scene.starCount; index += 1) {
+    const x = random.range(0, width);
+    const y = random.range(0, height);
+    const weight = Math.pow(random.next(), 2.6);
+    const radius = weight > 0.7 ? random.range(1.3, 2.8) : random.range(0.35, 1.5);
+    const alpha = 0.18 + weight * 0.78;
+    const color = random.chance(0.84) ? random.pick(scene.palette.lines) : random.pick(scene.palette.glows);
+    context.fillStyle = hexToRgba(color, alpha);
+
+    if (random.chance(0.24)) {
+      context.fillRect(x, y, radius, radius);
+    } else {
+      context.beginPath();
+      context.arc(x, y, radius, 0, TAU);
+      context.fill();
+    }
+  }
+
+  context.restore();
+}
+
+function paintInterfaceGrid(context, scene, width, height, random) {
+  const clusters = [
+    { x: width * 0.05, y: height * 0.04, flipX: 1, flipY: 1 },
+    { x: width * 0.78, y: height * 0.08, flipX: -1, flipY: 1 },
+    { x: width * 0.42, y: height * 0.03, flipX: 1, flipY: 1 },
+    { x: width * 0.42, y: height * 0.72, flipX: -1, flipY: -1 },
+  ];
 
   context.save();
-  context.strokeStyle = "rgba(17,17,17,0.06)";
-  context.setLineDash([1, 18]);
-  context.lineWidth = 1;
-  for (let y = 30; y < height; y += 48) {
+  context.strokeStyle = hexToRgba(scene.palette.lines[0], 0.78);
+  context.fillStyle = hexToRgba(scene.palette.lines[0], 0.88);
+  context.lineWidth = 1.2;
+
+  for (let index = 0; index < Math.min(scene.interfaceCount, clusters.length); index += 1) {
+    const cluster = clusters[index];
+    drawCircuitCluster(context, cluster.x, cluster.y, cluster.flipX, cluster.flipY, random);
+  }
+
+  context.restore();
+}
+
+function paintOrbitLines(context, scene, width, height, random) {
+  context.save();
+  context.lineWidth = 2;
+  context.globalAlpha = 0.72;
+
+  for (let index = 0; index < scene.orbitCount; index += 1) {
+    const baseY = height * (0.32 + index * 0.11) + random.range(-45, 38);
+    const controlY = baseY + random.range(-140, 140);
+    context.strokeStyle = hexToRgba(index % 2 === 0 ? SIGNAL_COLORS.gold : scene.palette.lines[2], 0.68);
     context.beginPath();
-    context.moveTo(0, y);
-    context.lineTo(width, y);
+    context.moveTo(-80, baseY + random.range(-22, 18));
+    context.bezierCurveTo(
+      width * 0.24,
+      controlY,
+      width * 0.62,
+      controlY + random.range(-120, 120),
+      width + 80,
+      baseY + random.range(-32, 32),
+    );
     context.stroke();
   }
+
   context.restore();
 }
 
-function paintFrame(context, width, height, random) {
+function paintSupernova(context, scene, random) {
   context.save();
-  context.strokeStyle = INK;
-
-  strokeWithMode(context, "plain", 3.5, () => {
-    context.strokeRect(28, 28, width - 56, height - 56);
-  });
-
-  strokeWithMode(context, "dashed", 2.2, () => {
-    context.strokeRect(52, 52, width - 104, height - 104);
-  });
-
-  strokeWithMode(context, "dotted", 1.8, () => {
-    context.strokeRect(74, 74, width - 148, height - 148);
-  });
-
-  for (let index = 0; index < 6; index += 1) {
-    const x = width * random.range(0.1, 0.9);
-    const y = height * random.range(0.08, 0.92);
-    context.beginPath();
-    context.arc(x, y, random.range(1.4, 2.8), 0, TAU);
-    context.fillStyle = "rgba(17,17,17,0.2)";
-    context.fill();
-  }
+  context.fillStyle = "#010103";
+  context.beginPath();
+  context.ellipse(
+    scene.centerX,
+    scene.centerY,
+    scene.ringRadius * 0.76,
+    scene.ringRadius * 0.7,
+    scene.accretionTilt,
+    0,
+    TAU,
+  );
+  context.fill();
   context.restore();
-}
 
-function paintSunOrMoon(context, scene, random) {
-  const { x, y, radius } = scene.sun;
+  for (let layer = 0; layer < scene.ringCount; layer += 1) {
+    const radius = scene.ringRadius + layer * scene.ringThickness * 0.8;
+    const warmColors = [SIGNAL_COLORS.orange, scene.palette.glows[1], scene.palette.glows[2], SIGNAL_COLORS.gold];
+    const coolColors = [scene.palette.glows[3], scene.palette.glows[4], SIGNAL_COLORS.cyan];
+
+    paintParticleRing(context, random, {
+      centerX: scene.centerX,
+      centerY: scene.centerY,
+      radius,
+      ellipse: 0.93 - layer * 0.06,
+      thickness: scene.ringThickness,
+      count: 1800 + layer * 650,
+      warmColors,
+      coolColors,
+    });
+  }
 
   context.save();
-  if (scene.hasNight) {
-    context.fillStyle = PAPER_SHADE;
-    context.beginPath();
-    context.arc(x, y, radius, 0, TAU);
-    context.fill();
-
-    context.fillStyle = PAPER;
-    context.beginPath();
-    context.arc(x + radius * 0.34, y - radius * 0.08, radius * 0.82, 0, TAU);
-    context.fill();
-
-    strokeWithMode(context, "plain", 3, () => {
-      context.beginPath();
-      context.arc(x, y, radius, 0, TAU);
-      context.stroke();
-    });
-  } else {
-    context.fillStyle = "rgba(17,17,17,0.06)";
-    context.beginPath();
-    context.arc(x, y, radius, 0, TAU);
-    context.fill();
-
-    strokeWithMode(context, "plain", 3, () => {
-      context.beginPath();
-      context.arc(x, y, radius, 0, TAU);
-      context.stroke();
-    });
-
-    for (let index = 0; index < 14; index += 1) {
-      const angle = (index / 14) * TAU;
-      const inner = radius * 1.18;
-      const outer = radius * random.range(1.7, 2.3);
-      drawSketchLine(
-        context,
-        x + Math.cos(angle) * inner,
-        y + Math.sin(angle) * inner,
-        x + Math.cos(angle) * outer,
-        y + Math.sin(angle) * outer,
-        random,
-        index % 2 === 0 ? "plain" : "dashed",
-        2,
-      );
-    }
+  context.globalCompositeOperation = "screen";
+  for (let index = 0; index < 1600; index += 1) {
+    const t = random.range(-1.4, 1.4);
+    const x = scene.centerX + t * scene.ringRadius * 1.9;
+    const y =
+      scene.centerY +
+      Math.sin(t * 2.1 + scene.accretionTilt) * scene.ringThickness * 0.65 +
+      spread(random, scene.ringThickness * 0.2);
+    const size = random.range(0.5, 1.8);
+    context.fillStyle = hexToRgba(
+      random.pick([SIGNAL_COLORS.orange, SIGNAL_COLORS.gold, scene.palette.lines[2]]),
+      random.range(0.12, 0.34),
+    );
+    context.fillRect(x, y, size, size);
   }
   context.restore();
 }
 
-function paintClouds(context, scene, random) {
-  const cloudCount = scene.cloudCount;
-  for (let index = 0; index < cloudCount; index += 1) {
-    const spread = cloudCount === 1 ? 0 : 980 / (cloudCount - 1);
-    const x = cloudCount === 1 ? 800 : 240 + index * spread + random.range(-60, 60);
-    const y = 180 + random.range(-45, 60);
-    const width = random.range(120, 180);
-    const height = random.range(34, 50);
-    drawCloud(context, x, y, width, height, random, index % 2 === 0 ? "dotted" : "plain");
-  }
+function paintBeam(context, scene, width, height, random) {
+  const gradient = context.createLinearGradient(
+    scene.beam.leftBase.x,
+    scene.beam.leftBase.y,
+    scene.beam.rightTip.x,
+    scene.beam.rightTip.y,
+  );
+  gradient.addColorStop(0, hexToRgba(SIGNAL_COLORS.orange, 0.94));
+  gradient.addColorStop(0.45, hexToRgba(SIGNAL_COLORS.pink, 0.92));
+  gradient.addColorStop(1, hexToRgba(SIGNAL_COLORS.cream, 0.82));
+
+  context.save();
+  context.fillStyle = gradient;
+  context.beginPath();
+  context.moveTo(scene.beam.leftBase.x, scene.beam.leftBase.y);
+  context.lineTo(scene.beam.rightBase.x, scene.beam.rightBase.y);
+  context.lineTo(scene.beam.rightTip.x, scene.beam.rightTip.y);
+  context.lineTo(scene.beam.leftTip.x, scene.beam.leftTip.y);
+  context.closePath();
+  context.fill();
+  context.restore();
+
+  paintParticleCloud(context, random, {
+    x: lerp(scene.beam.leftBase.x, scene.beam.leftTip.x, 0.36),
+    y: lerp(scene.beam.leftBase.y, scene.beam.leftTip.y, 0.42),
+    radiusX: width * 0.12,
+    radiusY: height * 0.08,
+    count: 1200,
+    colors: [SIGNAL_COLORS.orange, SIGNAL_COLORS.pink, SIGNAL_COLORS.cream],
+    minSize: 0.8,
+    maxSize: 2.1,
+    minAlpha: 0.04,
+    maxAlpha: 0.2,
+  });
 }
 
-function paintBirdsAndStars(context, scene, random) {
-  const skyMarks = scene.skyMarkCount;
-  for (let index = 0; index < skyMarks; index += 1) {
-    const x = random.range(120, 1480);
-    const y = random.range(110, 360);
-    if (scene.hasNight && random.chance(0.65)) {
-      drawStar(context, x, y, random.range(8, 16), random);
-    } else {
-      drawBird(context, x, y, random.range(20, 34), random);
-    }
-  }
+function paintPlume(context, scene, random) {
+  scatterParticlesAlongQuadratic(context, random, {
+    start: scene.plumeCurve.start,
+    control: scene.plumeCurve.control,
+    end: scene.plumeCurve.end,
+    count: scene.plumeDensity,
+    spreadX: scene.ringThickness * 2.2,
+    spreadY: scene.ringThickness * 1.6,
+    colors: [scene.palette.glows[4], scene.palette.glows[3], SIGNAL_COLORS.cyan, scene.palette.lines[1]],
+    minSize: 0.7,
+    maxSize: 2.4,
+    minAlpha: 0.05,
+    maxAlpha: 0.26,
+  });
+
+  paintParticleCloud(context, random, {
+    x: scene.plumeCurve.end.x + 40,
+    y: scene.plumeCurve.end.y - 20,
+    radiusX: 120,
+    radiusY: 96,
+    count: 540,
+    colors: [scene.palette.glows[4], SIGNAL_COLORS.cyan, scene.palette.lines[1]],
+    minSize: 1,
+    maxSize: 3.2,
+    minAlpha: 0.05,
+    maxAlpha: 0.28,
+  });
 }
 
-function paintMountains(context, scene, random) {
-  const peakCount = scene.mountainCount;
-  const baseY = scene.horizonY - 110;
-  const span = 1500 / peakCount;
+function paintShards(context, scene, random) {
+  context.save();
+  context.globalCompositeOperation = "screen";
 
-  for (let index = 0; index < peakCount; index += 1) {
-    const left = 60 + index * span + random.range(-20, 30);
-    const peakX = left + span * random.range(0.28, 0.65);
-    const right = left + span * random.range(0.9, 1.2);
-    const peakY = baseY - random.range(100, 230);
-    const mode = index % 3 === 0 ? "dashed" : "plain";
+  for (let index = 0; index < scene.shardCount; index += 1) {
+    const t = index / Math.max(scene.shardCount - 1, 1);
+    const point = quadraticPoint(scene.shardCurve.start, scene.shardCurve.control, scene.shardCurve.end, t);
+    const tangent = quadraticTangent(scene.shardCurve.start, scene.shardCurve.control, scene.shardCurve.end, t);
+    const angle = Math.atan2(tangent.y, tangent.x);
+    const size = random.range(12, 34) * (1 - t * 0.45);
+    const px = point.x + spread(random, 26);
+    const py = point.y + spread(random, 22);
 
-    context.save();
-    context.fillStyle = "rgba(17,17,17,0.04)";
+    context.fillStyle = hexToRgba(random.chance(0.65) ? SIGNAL_COLORS.pink : SIGNAL_COLORS.violet, random.range(0.36, 0.82));
     context.beginPath();
-    context.moveTo(left, scene.horizonY + 14);
-    context.lineTo(peakX, peakY);
-    context.lineTo(right, scene.horizonY + 14);
+    context.moveTo(px, py - size * 0.55);
+    context.lineTo(px + Math.cos(angle + 0.8) * size, py + Math.sin(angle + 0.8) * size);
+    context.lineTo(px + Math.cos(angle - 0.7) * size * 0.65, py + Math.sin(angle - 0.7) * size * 0.65);
     context.closePath();
     context.fill();
-    context.restore();
-
-    drawPolyline(
-      context,
-      [
-        [left, scene.horizonY + 14],
-        [peakX, peakY],
-        [right, scene.horizonY + 14],
-      ],
-      random,
-      mode,
-      3,
-      true,
-    );
   }
+
+  context.restore();
 }
 
-function paintGround(context, scene, random) {
-  const horizon = scene.horizonY;
-  const points = [];
-  for (let index = 0; index <= 8; index += 1) {
-    const x = (1600 / 8) * index;
-    const y = horizon + random.range(-18, 20) + (index % 2 === 0 ? -8 : 6);
-    points.push([x, y]);
-  }
-
-  drawPolyline(context, points, random, "plain", 3, false);
-
-  drawSketchLine(context, 800, horizon + 2, 870, 1030, random, "dashed", 2.5);
-  drawSketchLine(context, 870, 1030, 930, 1110, random, "dashed", 2.5);
-  drawSketchLine(context, 800, horizon + 6, 740, 1030, random, "dashed", 2.5);
-  drawSketchLine(context, 740, 1030, 690, 1110, random, "dashed", 2.5);
-}
-
-function paintWater(context, scene, random) {
-  if (!scene.hasWater) {
-    return;
-  }
-
-  const centerX = random.range(280, 1280);
-  const centerY = scene.horizonY + 120;
-  const width = random.range(180, 320);
-  const height = random.range(40, 80);
+function paintMonoliths(context, scene, random) {
+  const frame = scene.monolith;
 
   context.save();
-  context.fillStyle = "rgba(17,17,17,0.03)";
+  context.fillStyle = hexToRgba("#02030a", 0.92);
+  context.strokeStyle = hexToRgba(scene.palette.lines[0], 0.92);
+  context.lineWidth = 4;
+  context.strokeRect(frame.x, frame.y, frame.width, frame.height);
+  context.fillRect(frame.x + 6, frame.y + 6, frame.width - 12, frame.height - 12);
+  context.strokeRect(frame.x + frame.width * 0.44, frame.y + frame.height * 0.18, frame.width * 0.28, frame.height * 0.58);
+
   context.beginPath();
-  context.ellipse(centerX, centerY, width, height, 0, 0, TAU);
-  context.fill();
+  context.arc(frame.x + frame.width * 0.5, frame.y + 18, frame.width * 0.18, Math.PI, 0);
+  context.stroke();
+
+  const panelWidth = frame.width * 0.36;
+  const panelHeight = frame.height * 0.1;
+  context.strokeRect(frame.x - panelWidth - 14, frame.y + frame.height * 0.72, panelWidth, panelHeight);
+  context.fillRect(frame.x - panelWidth - 10, frame.y + frame.height * 0.72 + 4, panelWidth - 8, panelHeight - 8);
+
+  for (let index = 1; index < scene.monolithCount; index += 1) {
+    const scale = 1 - index * 0.22;
+    const offsetX = frame.width * random.range(-0.8, 1.2) * index;
+    const offsetY = frame.height * random.range(0.14, 0.28) * index;
+    context.strokeRect(frame.x + offsetX, frame.y + offsetY, frame.width * 0.34 * scale, frame.height * 0.2 * scale);
+  }
+
+  context.restore();
+}
+
+function paintDustHorizon(context, scene, width, height, random) {
+  context.save();
+  context.fillStyle = hexToRgba(SIGNAL_COLORS.violet, 0.88);
+  context.fillRect(0, height - 34, width, 34);
   context.restore();
 
-  for (let ring = 0; ring < 3; ring += 1) {
-    strokeWithMode(context, ring % 2 === 0 ? "dotted" : "dashed", 2, () => {
+  paintParticleCloud(context, random, {
+    x: width * 0.14,
+    y: height * 0.82,
+    radiusX: width * 0.14,
+    radiusY: height * 0.1,
+    count: scene.dustDensity,
+    colors: [SIGNAL_COLORS.orange, SIGNAL_COLORS.gold, SIGNAL_COLORS.cream],
+    minSize: 0.6,
+    maxSize: 2.5,
+    minAlpha: 0.04,
+    maxAlpha: 0.22,
+  });
+
+  paintParticleCloud(context, random, {
+    x: width * 0.88,
+    y: height * 0.84,
+    radiusX: width * 0.18,
+    radiusY: height * 0.12,
+    count: scene.dustDensity,
+    colors: [SIGNAL_COLORS.orange, SIGNAL_COLORS.gold, SIGNAL_COLORS.cream],
+    minSize: 0.6,
+    maxSize: 2.6,
+    minAlpha: 0.04,
+    maxAlpha: 0.22,
+  });
+}
+
+function paintParticleRing(context, random, { centerX, centerY, radius, ellipse, thickness, count, warmColors, coolColors }) {
+  context.save();
+  context.globalCompositeOperation = "screen";
+
+  for (let index = 0; index < count; index += 1) {
+    const angle = random.range(0, TAU);
+    const jitter = spread(random, thickness * 0.72);
+    const px = centerX + Math.cos(angle) * (radius + jitter);
+    const py = centerY + Math.sin(angle) * ((radius + jitter * 0.72) * ellipse);
+    const colors = angle > Math.PI * 0.08 && angle < Math.PI * 1.1 ? warmColors : coolColors;
+    const size = random.range(0.8, 2.6);
+    const alpha = random.range(0.1, 0.55);
+    context.fillStyle = hexToRgba(random.pick(colors), alpha);
+    context.fillRect(px, py, size, size);
+  }
+
+  context.restore();
+}
+
+function paintParticleCloud(context, random, { x, y, radiusX, radiusY, count, colors, minSize, maxSize, minAlpha, maxAlpha }) {
+  context.save();
+  context.globalCompositeOperation = "screen";
+
+  for (let index = 0; index < count; index += 1) {
+    const angle = random.range(0, TAU);
+    const distance = Math.sqrt(random.next());
+    const px = x + Math.cos(angle) * radiusX * distance + spread(random, radiusX * 0.08);
+    const py = y + Math.sin(angle) * radiusY * distance + spread(random, radiusY * 0.08);
+    const size = random.range(minSize, maxSize);
+    context.fillStyle = hexToRgba(random.pick(colors), random.range(minAlpha, maxAlpha));
+
+    if (random.chance(0.26)) {
       context.beginPath();
-      context.ellipse(centerX, centerY + ring * 4, width - ring * 30, height - ring * 10, 0, 0, TAU);
-      context.stroke();
-    });
-  }
-}
-
-function paintHouseCluster(context, scene, random) {
-  const baseX = 270;
-  for (let index = 0; index < scene.houseCount; index += 1) {
-    const x = baseX + index * 230 + random.range(-20, 20);
-    const y = scene.horizonY + random.range(-16, 12);
-    const scale = random.range(0.86, 1.12);
-    drawHouse(context, x, y, scale, random, index % 2 === 0 ? "plain" : "dashed");
-  }
-}
-
-function paintTrees(context, scene, random) {
-  for (let index = 0; index < scene.treeCount; index += 1) {
-    const x = 180 + index * random.range(180, 260) + random.range(-30, 40);
-    const y = scene.horizonY + random.range(20, 90);
-    drawTree(context, x, y, random.range(0.85, 1.25), random, index % 2 === 0 ? "dotted" : "plain");
-  }
-}
-
-function paintFigures(context, scene, random) {
-  for (let index = 0; index < scene.figureCount; index += 1) {
-    const x = 660 + index * random.range(90, 130) + random.range(-10, 14);
-    const y = scene.horizonY + random.range(40, 110);
-    const scale = random.range(0.9, 1.15);
-    drawStickFigure(context, x, y, scale, random, index % 2 === 0 ? "plain" : "dashed");
-  }
-}
-
-function paintFlowers(context, scene, random) {
-  for (let index = 0; index < scene.flowerCount; index += 1) {
-    const x = random.range(120, 1480);
-    const y = random.range(scene.horizonY + 60, 1020);
-    drawFlower(context, x, y, random.range(0.7, 1.05), random, index % 3 === 0 ? "dotted" : "plain");
-  }
-}
-
-function paintAnimal(context, scene, random) {
-  if (scene.animal === null) {
-    return;
+      context.arc(px, py, size, 0, TAU);
+      context.fill();
+    } else {
+      context.fillRect(px, py, size, size);
+    }
   }
 
-  const x = random.range(1060, 1360);
-  const y = scene.horizonY + random.range(80, 130);
-
-  if (scene.animal === "fish" && scene.hasWater) {
-    drawFish(context, x, y, 1, random);
-    return;
-  }
-
-  drawPet(context, x, y, 1, random, scene.animal);
-}
-
-function paintSmallGeometry(context, scene, random) {
-  if (scene.smallGeometryType === "planet") {
-    drawRingedPlanet(context, 1280, 240, 1, random);
-  } else {
-    drawKite(context, 1280, 260, 1, random);
-  }
-}
-
-function paintCaption(context, prompt, width, height) {
-  const caption = prompt.focusTokens.slice(0, 3).join(" / ") || "little drawing";
-
-  context.save();
-  context.fillStyle = "rgba(17,17,17,0.72)";
-  context.font = '700 24px "IBM Plex Mono", "Courier New", monospace';
-  context.textAlign = "left";
-  context.fillText(caption, 96, height - 90);
   context.restore();
 }
 
-function drawHouse(context, x, y, scale, random, mode) {
-  const width = 150 * scale;
-  const height = 110 * scale;
-  const roofHeight = 72 * scale;
-  const left = x;
-  const right = x + width;
-  const top = y - height;
+function scatterParticlesAlongQuadratic(context, random, { start, control, end, count, spreadX, spreadY, colors, minSize, maxSize, minAlpha, maxAlpha }) {
+  context.save();
+  context.globalCompositeOperation = "screen";
 
-  drawPolyline(
-    context,
-    [
-      [left, y],
-      [left, top],
-      [right, top],
-      [right, y],
-    ],
-    random,
-    mode,
-    3,
-    true,
-  );
+  for (let index = 0; index < count; index += 1) {
+    const t = random.next();
+    const point = quadraticPoint(start, control, end, t);
+    const tangent = quadraticTangent(start, control, end, t);
+    const angle = Math.atan2(tangent.y, tangent.x);
+    const lateral = spread(random, lerp(spreadX, spreadX * 0.35, t));
+    const vertical = spread(random, lerp(spreadY, spreadY * 0.45, t));
+    const px = point.x + Math.cos(angle + Math.PI / 2) * lateral + Math.cos(angle) * vertical * 0.24;
+    const py = point.y + Math.sin(angle + Math.PI / 2) * lateral + Math.sin(angle) * vertical * 0.24;
+    const size = random.range(minSize, maxSize);
+    context.fillStyle = hexToRgba(random.pick(colors), random.range(minAlpha, maxAlpha));
 
-  drawPolyline(
-    context,
-    [
-      [left - 10 * scale, top],
-      [x + width / 2, top - roofHeight],
-      [right + 10 * scale, top],
-    ],
-    random,
-    "plain",
-    3.2,
-    true,
-  );
-
-  drawPolyline(
-    context,
-    [
-      [x + width * 0.38, y],
-      [x + width * 0.38, y - 56 * scale],
-      [x + width * 0.62, y - 56 * scale],
-      [x + width * 0.62, y],
-    ],
-    random,
-    "dashed",
-    2.2,
-    true,
-  );
-
-  drawWindow(context, x + width * 0.17, top + height * 0.28, 28 * scale, random);
-  drawWindow(context, x + width * 0.62, top + height * 0.28, 28 * scale, random);
-}
-
-function drawWindow(context, x, y, size, random) {
-  drawPolyline(
-    context,
-    [
-      [x, y],
-      [x + size, y],
-      [x + size, y + size],
-      [x, y + size],
-    ],
-    random,
-    "dotted",
-    1.8,
-    true,
-  );
-  drawSketchLine(context, x + size / 2, y, x + size / 2, y + size, random, "plain", 1.5);
-  drawSketchLine(context, x, y + size / 2, x + size, y + size / 2, random, "plain", 1.5);
-}
-
-function drawTree(context, x, y, scale, random, mode) {
-  drawSketchLine(context, x, y, x, y - 90 * scale, random, "plain", 3);
-  drawPolyline(
-    context,
-    [
-      [x - 54 * scale, y - 78 * scale],
-      [x, y - 170 * scale],
-      [x + 54 * scale, y - 78 * scale],
-    ],
-    random,
-    mode,
-    2.6,
-    true,
-  );
-  drawPolyline(
-    context,
-    [
-      [x - 44 * scale, y - 116 * scale],
-      [x, y - 206 * scale],
-      [x + 44 * scale, y - 116 * scale],
-    ],
-    random,
-    "plain",
-    2.4,
-    true,
-  );
-}
-
-function drawStickFigure(context, x, y, scale, random, mode) {
-  strokeWithMode(context, mode, 2.4, () => {
-    context.beginPath();
-    context.arc(x, y - 78 * scale, 20 * scale, 0, TAU);
-    context.stroke();
-  });
-
-  drawSketchLine(context, x, y - 58 * scale, x, y + 14 * scale, random, "plain", 2.8);
-  drawSketchLine(context, x - 36 * scale, y - 30 * scale, x + 36 * scale, y - 30 * scale, random, mode, 2.2);
-  drawSketchLine(context, x, y + 12 * scale, x - 30 * scale, y + 72 * scale, random, "plain", 2.4);
-  drawSketchLine(context, x, y + 12 * scale, x + 30 * scale, y + 72 * scale, random, "plain", 2.4);
-}
-
-function drawFlower(context, x, y, scale, random, mode) {
-  drawSketchLine(context, x, y, x, y - 34 * scale, random, "plain", 1.8);
-  strokeWithMode(context, mode, 1.6, () => {
-    for (let index = 0; index < 5; index += 1) {
-      const angle = (index / 5) * TAU;
+    if (random.chance(0.2)) {
       context.beginPath();
-      context.arc(x + Math.cos(angle) * 8 * scale, y - 34 * scale + Math.sin(angle) * 8 * scale, 7 * scale, 0, TAU);
-      context.stroke();
+      context.arc(px, py, size, 0, TAU);
+      context.fill();
+    } else {
+      context.fillRect(px, py, size, size);
     }
-  });
-  context.beginPath();
-  context.arc(x, y - 34 * scale, 5 * scale, 0, TAU);
-  context.fillStyle = INK;
-  context.fill();
-}
-
-function drawPet(context, x, y, scale, random, animal) {
-  const bodyWidth = 70 * scale;
-  const bodyHeight = 34 * scale;
-  const headRadius = 18 * scale;
-
-  drawPolyline(
-    context,
-    [
-      [x - bodyWidth / 2, y],
-      [x + bodyWidth / 2, y],
-      [x + bodyWidth / 2 - 10 * scale, y - bodyHeight],
-      [x - bodyWidth / 2 + 8 * scale, y - bodyHeight],
-    ],
-    random,
-    "plain",
-    2.6,
-    true,
-  );
-
-  strokeWithMode(context, "plain", 2.2, () => {
-    context.beginPath();
-    context.arc(x - bodyWidth / 2 + 10 * scale, y - bodyHeight + 6 * scale, headRadius, 0, TAU);
-    context.stroke();
-  });
-
-  drawSketchLine(context, x - bodyWidth / 2, y + 4 * scale, x - bodyWidth / 2 - 18 * scale, y + 30 * scale, random, "plain", 2);
-  drawSketchLine(context, x - bodyWidth / 2 + 22 * scale, y + 4 * scale, x - bodyWidth / 2 + 10 * scale, y + 30 * scale, random, "plain", 2);
-  drawSketchLine(context, x + bodyWidth / 2 - 12 * scale, y + 4 * scale, x + bodyWidth / 2 - 14 * scale, y + 30 * scale, random, "plain", 2);
-  drawSketchLine(context, x + bodyWidth / 2 + 8 * scale, y + 4 * scale, x + bodyWidth / 2 + 16 * scale, y + 30 * scale, random, "plain", 2);
-  drawSketchLine(context, x + bodyWidth / 2, y - bodyHeight + 8 * scale, x + bodyWidth / 2 + 28 * scale, y - bodyHeight - 10 * scale, random, "dashed", 2);
-
-  if (animal === "cat") {
-    drawPolyline(
-      context,
-      [
-        [x - bodyWidth / 2 - 2 * scale, y - bodyHeight - 8 * scale],
-        [x - bodyWidth / 2 - 10 * scale, y - bodyHeight - 28 * scale],
-        [x - bodyWidth / 2 + 4 * scale, y - bodyHeight - 18 * scale],
-      ],
-      random,
-      "plain",
-      1.8,
-      true,
-    );
-    drawPolyline(
-      context,
-      [
-        [x - bodyWidth / 2 + 18 * scale, y - bodyHeight - 18 * scale],
-        [x - bodyWidth / 2 + 30 * scale, y - bodyHeight - 30 * scale],
-        [x - bodyWidth / 2 + 26 * scale, y - bodyHeight - 10 * scale],
-      ],
-      random,
-      "plain",
-      1.8,
-      true,
-    );
   }
-}
 
-function drawFish(context, x, y, scale, random) {
-  strokeWithMode(context, "plain", 2.2, () => {
-    context.beginPath();
-    context.ellipse(x, y, 34 * scale, 18 * scale, 0, 0, TAU);
-    context.stroke();
-  });
-  drawPolyline(
-    context,
-    [
-      [x + 34 * scale, y],
-      [x + 62 * scale, y - 16 * scale],
-      [x + 62 * scale, y + 16 * scale],
-    ],
-    random,
-    "dashed",
-    2,
-    true,
-  );
-  context.beginPath();
-  context.arc(x - 14 * scale, y - 4 * scale, 2.4 * scale, 0, TAU);
-  context.fillStyle = INK;
-  context.fill();
-}
-
-function drawRingedPlanet(context, x, y, scale, random) {
-  strokeWithMode(context, "plain", 2.4, () => {
-    context.beginPath();
-    context.arc(x, y, 38 * scale, 0, TAU);
-    context.stroke();
-  });
-  strokeWithMode(context, "dashed", 2, () => {
-    context.beginPath();
-    context.ellipse(x, y + 2 * scale, 66 * scale, 18 * scale, -0.2, 0, TAU);
-    context.stroke();
-  });
-  drawSketchLine(context, x - 48 * scale, y - 56 * scale, x - 88 * scale, y - 92 * scale, random, "dotted", 1.8);
-}
-
-function drawKite(context, x, y, scale, random) {
-  drawPolyline(
-    context,
-    [
-      [x, y - 52 * scale],
-      [x + 44 * scale, y],
-      [x, y + 52 * scale],
-      [x - 44 * scale, y],
-    ],
-    random,
-    "plain",
-    2.3,
-    true,
-  );
-  drawSketchLine(context, x, y + 52 * scale, x - 40 * scale, y + 140 * scale, random, "dashed", 1.8);
-}
-
-function drawCloud(context, x, y, width, height, random, mode) {
-  const points = [];
-  const bumps = 6;
-  for (let index = 0; index <= bumps; index += 1) {
-    const ratio = index / bumps;
-    points.push([x - width / 2 + width * ratio, y + Math.sin(ratio * Math.PI) * -height]);
-  }
-  points.push([x + width / 2, y + 10]);
-  points.push([x - width / 2, y + 10]);
-  drawPolyline(context, points, random, mode, 2.2, true);
-}
-
-function drawBird(context, x, y, width, random) {
-  drawSketchLine(context, x - width / 2, y, x, y - width / 3, random, "plain", 1.9);
-  drawSketchLine(context, x, y - width / 3, x + width / 2, y, random, "plain", 1.9);
-}
-
-function drawStar(context, x, y, radius, random) {
-  const points = [];
-  for (let index = 0; index < 10; index += 1) {
-    const angle = -Math.PI / 2 + (index / 10) * TAU;
-    const r = index % 2 === 0 ? radius : radius * 0.45;
-    points.push([x + Math.cos(angle) * r, y + Math.sin(angle) * r]);
-  }
-  drawPolyline(context, points, random, "dotted", 1.7, true);
-}
-
-function drawPolyline(context, points, random, mode, width, closed) {
-  context.save();
-  context.strokeStyle = INK;
-  strokeWithMode(context, mode, width, () => {
-    context.beginPath();
-    const first = points[0];
-    if (!first) {
-      return;
-    }
-    context.moveTo(jitter(first[0], random, 2.4), jitter(first[1], random, 2.4));
-    for (let index = 1; index < points.length; index += 1) {
-      const point = points[index];
-      context.lineTo(jitter(point[0], random, 2.4), jitter(point[1], random, 2.4));
-    }
-    if (closed) {
-      context.closePath();
-    }
-    context.stroke();
-  });
   context.restore();
 }
 
-function drawSketchLine(context, x1, y1, x2, y2, random, mode, width) {
-  context.save();
-  context.strokeStyle = INK;
-  strokeWithMode(context, mode, width, () => {
-    context.beginPath();
-    context.moveTo(jitter(x1, random, 2.1), jitter(y1, random, 2.1));
-    const midX = (x1 + x2) / 2 + random.range(-8, 8);
-    const midY = (y1 + y2) / 2 + random.range(-8, 8);
-    context.quadraticCurveTo(midX, midY, jitter(x2, random, 2.1), jitter(y2, random, 2.1));
-    context.stroke();
-  });
-  context.restore();
+function drawCircuitCluster(context, originX, originY, flipX, flipY, random) {
+  const first = 90 + random.range(-18, 22);
+  const second = 120 + random.range(-16, 20);
+
+  context.beginPath();
+  context.moveTo(originX, originY);
+  context.lineTo(originX + first * flipX, originY);
+  context.lineTo(originX + first * flipX, originY + second * flipY);
+  context.stroke();
+
+  context.beginPath();
+  context.arc(originX + first * flipX, originY, 6, 0, TAU);
+  context.fill();
+
+  drawRectPath(context, originX + (first + 26) * flipX, originY + (second - 44) * flipY, 34 * flipX, 34 * flipY);
+  context.stroke();
+  context.fillRect(originX + (first + 52) * flipX, originY + (second + 10) * flipY, 8, 8);
 }
 
-function strokeWithMode(context, mode, width, draw) {
-  context.lineWidth = width;
-  if (mode === "dashed") {
-    context.setLineDash([18, 12]);
-  } else if (mode === "dotted") {
-    context.setLineDash([1, 11]);
-  } else {
-    context.setLineDash([]);
-  }
-  draw();
-}
-
-function hasAnyToken(tokens, values) {
-  return values.some((value) => tokens.has(value));
-}
-
-function pickAnimal(tokens) {
-  if (hasAnyToken(tokens, ["cat", "kitten"])) {
-    return "cat";
-  }
-  if (hasAnyToken(tokens, ["dog", "puppy"])) {
-    return "dog";
-  }
-  if (hasAnyToken(tokens, ["fish"])) {
-    return "fish";
-  }
-  return null;
+function drawRectPath(context, x, y, width, height) {
+  context.beginPath();
+  context.moveTo(x, y);
+  context.lineTo(x + width, y);
+  context.lineTo(x + width, y + height);
+  context.lineTo(x, y + height);
+  context.closePath();
 }
 
 function buildCharacterProfile(text) {
-  const normalized = String(text ?? "").toLowerCase();
-  const characterPool = normalized.match(/[a-z0-9]/g) ?? [];
-  const denominator = Math.max(characterPool.length, 1);
-  const punctuationCount = normalized.match(/[.,;:!?]/g)?.length ?? 0;
-
-  return {
-    punctuationCount,
-    celestialRatio: ratioForGroup(characterPool, denominator, "celestial"),
-    mountainRatio: ratioForGroup(characterPool, denominator, "mountains"),
-    figureRatio: ratioForGroup(characterPool, denominator, "figures"),
-    treeRatio: ratioForGroup(characterPool, denominator, "trees"),
-    houseRatio: ratioForGroup(characterPool, denominator, "houses"),
-    flowerRatio: ratioForGroup(characterPool, denominator, "flowers"),
-    birdRatio: ratioForGroup(characterPool, denominator, "birds"),
-    cloudRatio:
-      ratioForGroup(characterPool, denominator, "water") * 0.35 +
-      ratioForGroup(characterPool, denominator, "flowers") * 0.65,
-    waterRatio: ratioForGroup(characterPool, denominator, "water"),
+  const source = String(text ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const total = Math.max(source.length, 1);
+  const counts = {
+    ring: 0,
+    orbit: 0,
+    nebula: 0,
+    pillar: 0,
+    shards: 0,
+    sparks: 0,
+    nodes: 0,
+    void: 0,
   };
-}
 
-function ratioForGroup(characterPool, denominator, groupId) {
-  const mapping = CHARACTER_OBJECT_MAPPING.find((entry) => entry.id === groupId);
-  if (!mapping) {
-    return 0;
-  }
-
-  let matches = 0;
-  for (const character of characterPool) {
-    if (mapping.characters.includes(character)) {
-      matches += 1;
+  for (const character of source) {
+    for (const [key, group] of Object.entries(FEATURE_CHARACTERS)) {
+      if (group.includes(character)) {
+        counts[key] += 1;
+      }
     }
   }
 
-  return matches / denominator;
+  return Object.fromEntries(Object.entries(counts).map(([key, value]) => [key, value / total]));
 }
 
-function scaleCount(ratio, min, max, multiplier) {
-  return clamp(Math.round(min + ratio * multiplier), min, max);
+function pickPaletteKey(tokens, normalizedText, variant) {
+  if (hasAnyToken(tokens, ["orange", "cyan", "pink", "magenta", "supernova", "ring", "plume"])) {
+    return "supernova";
+  }
+
+  if (hasAnyToken(tokens, ["atlas", "grid", "map", "signal"])) {
+    return "atlas";
+  }
+
+  if (hasAnyToken(tokens, ["synapse", "neon", "electric"])) {
+    return "synapse";
+  }
+
+  if (hasAnyToken(tokens, ["ash", "stone", "tectonic", "mineral"])) {
+    return "tectonic";
+  }
+
+  return PALETTE_KEYS[hashTextToSeed(`${normalizedText}|palette|${variant}`) % PALETTE_KEYS.length];
 }
 
-function jitter(value, random, amount) {
-  return value + random.range(-amount, amount);
+function keywordBoost(tokens, words, amount) {
+  return words.some((word) => tokens.has(word)) ? amount : 0;
+}
+
+function hasAnyToken(tokens, expectedTokens) {
+  return expectedTokens.some((token) => tokens.has(token));
+}
+
+function quadraticPoint(start, control, end, t) {
+  const inverse = 1 - t;
+  return {
+    x: inverse * inverse * start.x + 2 * inverse * t * control.x + t * t * end.x,
+    y: inverse * inverse * start.y + 2 * inverse * t * control.y + t * t * end.y,
+  };
+}
+
+function quadraticTangent(start, control, end, t) {
+  return {
+    x: 2 * (1 - t) * (control.x - start.x) + 2 * t * (end.x - control.x),
+    y: 2 * (1 - t) * (control.y - start.y) + 2 * t * (end.y - control.y),
+  };
+}
+
+function paintGlow(context, x, y, radius, color) {
+  const gradient = context.createRadialGradient(x, y, 0, x, y, radius);
+  gradient.addColorStop(0, color);
+  gradient.addColorStop(1, hexToRgba(color, 0));
+
+  context.save();
+  context.fillStyle = gradient;
+  context.beginPath();
+  context.arc(x, y, radius, 0, TAU);
+  context.fill();
+  context.restore();
+}
+
+function hexToRgba(hexColor, alpha) {
+  if (hexColor.startsWith("rgba(") || hexColor.startsWith("rgb(")) {
+    const parts = hexColor.match(/\d+(\.\d+)?/g) ?? [];
+    return `rgba(${parts[0] ?? 255}, ${parts[1] ?? 255}, ${parts[2] ?? 255}, ${clamp(alpha, 0, 1)})`;
+  }
+
+  const hex = hexColor.replace("#", "");
+  const size = hex.length === 3 ? 1 : 2;
+  const parts = [];
+
+  for (let index = 0; index < hex.length; index += size) {
+    const chunk = hex.slice(index, index + size);
+    parts.push(parseInt(size === 1 ? `${chunk}${chunk}` : chunk, 16));
+  }
+
+  return `rgba(${parts[0]}, ${parts[1]}, ${parts[2]}, ${clamp(alpha, 0, 1)})`;
+}
+
+function scaleCount(value, min, max, threshold) {
+  const normalized = clamp(value / threshold, 0, 1);
+  return Math.round(min + (max - min) * normalized);
 }
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
+}
+
+function lerp(start, end, factor) {
+  return start + (end - start) * factor;
+}
+
+function spread(random, amount) {
+  return (random.next() + random.next() + random.next() - 1.5) * amount;
 }

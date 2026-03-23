@@ -1,49 +1,34 @@
 # Steganova
 
-Steganova is a small Svelte + Vite app that turns a short text prompt into a single black-and-white image, then hides that exact prompt inside the exported PNG.
-
-The current visual direction is intentionally simple:
-
-- one output at a time
-- naive childlike drawing style
-- monochrome ink-on-paper look
-- geometric forms with plain, dashed, and dotted lines
+Steganova is a small Svelte + Vite app that turns a short text prompt into a single psychedelic supernova image, then hides that exact prompt inside the exported PNG.
 
 ## What It Does
 
-You type a short scene such as:
+You type a short prompt such as:
 
 ```text
-A little house, a round sun, two children, a tree, a pond and three birds over a hill.
+A burning orange ring above a cyan plume, a magenta corridor, gold orbit lines and a lone monolith in cosmic dust.
 ```
 
 Steganova then:
 
-1. Generates one illustrated scene on a canvas
+1. Generates one cosmic canvas composition
 2. Embeds the normalized prompt into that canvas with steganography
 3. Lets you download the final PNG
 4. Lets you reveal and verify the hidden message from the rendered image
+5. Lets you upload a PNG later to decode the hidden sentence back out
 
-## Current Visual Style
+## Visual Direction
 
-The renderer is tuned for:
+The renderer now aims for:
 
-- childlike / naive composition
-- simple figurative scenes instead of abstract cosmic imagery
-- hand-drawn irregular lines
-- black ink on off-white paper
-- mixed border and stroke patterns: solid, dashed, dotted
+- black-space backgrounds
+- orange supernova rings
+- cyan and magenta particle plumes
+- thin orbital lines and geometric interface marks
+- one output at a time, not a gallery
 
-Typical motifs include:
-
-- houses
-- hills and mountains
-- suns or moons
-- trees
-- stick figures
-- flowers
-- birds
-- small geometric elements like kites or ringed planets
+The image plan is deterministic from the prompt and remix variant. Character frequencies influence how many rings, arcs, plumes, shards, towers and signal marks appear.
 
 ## Getting Started
 
@@ -79,39 +64,41 @@ npm test
 
 ## Usage
 
-1. Enter a short prompt describing a simple scene
-2. Click `Draw`
-3. Click `Remix` if you want a different version of the same idea
+1. Enter a short prompt describing the cosmic scene
+2. Click `Generate`
+3. Click `Remix` if you want a different seeded version of the same prompt
 4. Click `Download PNG` to save the generated image
-5. Click `Reveal decoded message` to verify that the prompt is still embedded in the canvas
+5. Click `Reveal decoded message` to verify the embedded sentence
+6. Switch to `Decode` to upload a PNG and extract the hidden text
 
 ## Project Structure
 
 ```text
 src/
   App.svelte                         Main screen and controls
-  app.css                            Global black-and-white UI styling
+  app.css                            Global cosmic UI styling
   main.js                            App bootstrap
   lib/
     application/
       generateArtwork.js             Render + embed hidden message
-      readEmbeddedMessage.js         Decode hidden message from canvas
+      readEmbeddedMessage.js         Decode hidden message from a canvas
     domain/
-      artDirections.js               Active rendering mode metadata
       promptMessage.js               Prompt analysis and validation
     ui/
-      ArtworkPanel.svelte            Single artwork canvas panel
+      ArtworkPanel.svelte            Canvas renderer panel
+      ImageDecodePanel.svelte        PNG decode panel
     infrastructure/
-      rendering/                     Naive ink scene renderer
+      rendering/
+        paletteCatalog.js            Cosmic palette presets
+        renderArtwork.js             Supernova scene renderer
       steganography/                 Canvas steganography logic
 ```
 
 ## Notes
 
-- Steganova currently focuses on a single image output, not a gallery.
-- The same prompt can produce different variants through seeded remixing.
 - The hidden payload is the normalized prompt text, not a separate metadata object.
 - The image generation and the hidden-message embedding happen locally in the browser.
+- The decode flow works best with original PNG exports that preserve the exact pixel data.
 
 ## Stack
 
