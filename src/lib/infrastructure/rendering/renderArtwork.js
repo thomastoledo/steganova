@@ -4,16 +4,13 @@ import { getPalette } from "./paletteCatalog.js";
 
 const TAU = Math.PI * 2;
 const PALETTE_KEYS = ["supernova", "atlas", "synapse", "tectonic"];
-const FEATURE_CHARACTERS = Object.freeze({
-  ring: "oq0c",
-  orbit: "aer",
-  nebula: "mnuw",
-  pillar: "ilt1",
-  shards: "pvyk",
-  sparks: "sxzj",
-  nodes: "dbg8",
-  void: "fh",
-});
+const VOWELS = new Set(["a", "e", "i", "o", "u"]);
+const CURVED_LETTERS = new Set(["c", "e", "g", "j", "o", "q", "s", "u"]);
+const ROUND_CHARACTERS = new Set(["o", "0"]);
+const MAX_VISIBLE_STARS = 5000;
+const MAX_VISIBLE_MOONS = 36;
+const MAX_VISIBLE_CURVES = 20;
+const MAX_VISIBLE_CONSTELLATIONS = 240;
 const SIGNAL_COLORS = Object.freeze({
   pink: "#ff79dd",
   violet: "#ab82ff",
@@ -33,21 +30,19 @@ export function renderArtworkScene({
   pixelRatio = 1,
 }) {
   const context = setupCanvas(canvas, width, height, pixelRatio);
-  const seed = hashTextToSeed(`${prompt.normalizedText}|supernova|${variant}`);
+  const seed = hashTextToSeed(`${prompt.normalizedText}|steganova|${variant}`);
   const random = createSeededRandom(seed);
   const scene = buildScenePlan(prompt, random, width, height, variant);
 
   context.clearRect(0, 0, width, height);
   paintBackdrop(context, scene, width, height, random);
-  paintStarfield(context, scene, width, height, random);
-  paintInterfaceGrid(context, scene, width, height, random);
-  paintOrbitLines(context, scene, width, height, random);
-  paintSupernova(context, scene, random);
-  paintBeam(context, scene, width, height, random);
-  paintPlume(context, scene, random);
-  paintShards(context, scene, random);
-  paintMonoliths(context, scene, random);
-  paintDustHorizon(context, scene, width, height, random);
+  paintDustHorizon(context, scene, width, height, random, 0.45);
+  paintSpaceCurves(context, scene);
+  paintConstellations(context, scene);
+  paintMoons(context, scene);
+  paintAccretionDisk(context, scene, random);
+  paintPortalsAndDoors(context, scene);
+  paintDustHorizon(context, scene, width, height, random, 1);
 
   return {
     seed,
@@ -76,39 +71,26 @@ function setupCanvas(canvas, width, height, pixelRatio) {
 }
 
 function buildScenePlan(prompt, random, width, height, variant) {
-  const normalizedText = prompt.normalizedText.toLowerCase();
-  const tokens = new Set(
-    normalizedText
-      .split(/[^a-z0-9]+/g)
-      .filter(Boolean),
-  );
-
-  for (const token of prompt.focusTokens) {
-    tokens.add(token);
-  }
-
-  const profile = buildCharacterProfile(normalizedText);
-  const paletteKey = pickPaletteKey(tokens, normalizedText, variant);
+  const profile = buildTextCosmos(prompt.normalizedText);
+  const paletteKey = pickPaletteKey(prompt.normalizedText, variant);
   const palette = getPalette(paletteKey);
-  const ringBoost = keywordBoost(tokens, ["ring", "portal", "halo", "sun", "supernova"], 0.03);
-  const orbitBoost = keywordBoost(tokens, ["orbit", "wave", "line", "arc"], 0.02);
-  const plumeBoost = keywordBoost(tokens, ["cloud", "smoke", "plume", "dust", "nebula"], 0.03);
-  const shardBoost = keywordBoost(tokens, ["beam", "prism", "triangle", "shard"], 0.03);
-  const pillarBoost = keywordBoost(tokens, ["tower", "gate", "door", "monolith", "pillar"], 0.03);
-  const twinRing = hasAnyToken(tokens, ["twin", "double", "binary"]) || profile.ring > 0.09;
-  const centerX = width * random.range(0.48, 0.56);
-  const centerY = height * random.range(0.2, 0.31);
-  const ringRadius = width * clamp(0.14 + profile.ring * 0.24 + ringBoost, 0.14, 0.26);
-  const ringThickness = width * clamp(0.018 + (profile.nebula + profile.sparks) * 0.06, 0.022, 0.072);
-  const beamBaseY = height * random.range(0.8, 0.87);
-  const beamBaseX = width * random.range(0.1, 0.2);
-  const beamWidth = width * clamp(0.14 + profile.pillar * 0.18, 0.14, 0.24);
-  const beamTipX = centerX * random.range(0.78, 0.92);
-  const beamTipY = height * random.range(0.55, 0.68);
-  const monolithHeight = height * clamp(0.2 + profile.pillar * 0.44, 0.22, 0.34);
-  const monolithWidth = width * clamp(0.068 + profile.nodes * 0.18, 0.07, 0.11);
-  const monolithX = beamBaseX + beamWidth * random.range(0.86, 1.14);
-  const monolithY = beamBaseY - monolithHeight * random.range(1.0, 1.16);
+  const centerX = width * random.range(0.46, 0.54);
+  const centerY = height * random.range(0.24, 0.32);
+  const diskRadius = width * clamp(0.12 + profile.vowelDensity * 0.06 + random.range(-0.01, 0.02), 0.12, 0.2);
+  const diskThickness = width * clamp(0.018 + profile.consonantDensity * 0.085 + logScaled(profile.consonantCount, 0.012), 0.018, 0.12);
+  const glowIntensity = profile.vowelCount === 0 ? 0 : clamp(0.12 + profile.vowelDensity * 1.2 + logScaled(profile.vowelCount, 0.18), 0.12, 1);
+  const visibleStars = compressVisibleCount(profile.eCount, MAX_VISIBLE_STARS, 400);
+  const visibleMoons = compressVisibleCount(profile.roundCount, MAX_VISIBLE_MOONS, 14);
+  const visibleCurves = compressVisibleCount(profile.curvedCount, MAX_VISIBLE_CURVES, 10);
+  const constellations = layoutConstellations(
+    profile.constellations,
+    visibleStars,
+    width,
+    height,
+    { x: centerX, y: centerY },
+    diskRadius * 1.8,
+    random,
+  );
 
   return {
     paletteKey,
@@ -116,39 +98,20 @@ function buildScenePlan(prompt, random, width, height, variant) {
     profile,
     centerX,
     centerY,
-    ringRadius,
-    ringThickness,
-    ringCount: twinRing ? 2 : 1,
-    starCount: scaleCount(profile.sparks + prompt.cadence.punctuationDensity * 1.8, 180, 520, 0.16),
-    orbitCount: scaleCount(profile.orbit + orbitBoost, 2, 6, 0.08),
-    interfaceCount: scaleCount(profile.nodes + profile.orbit * 0.25, 4, 10, 0.12),
-    plumeDensity: scaleCount(profile.nebula + plumeBoost + prompt.cadence.vowelRatio * 0.12, 1200, 3200, 0.24),
-    dustDensity: scaleCount(profile.nebula + profile.ring * 0.45, 900, 2600, 0.22),
-    shardCount: scaleCount(profile.shards + shardBoost, 7, 26, 0.08),
-    monolithCount: scaleCount(profile.pillar + pillarBoost, 1, 3, 0.07),
-    beam: {
-      leftBase: { x: beamBaseX, y: beamBaseY },
-      rightBase: { x: beamBaseX + beamWidth * 1.55, y: beamBaseY },
-      leftTip: { x: beamTipX - beamWidth * 0.18, y: beamTipY + beamWidth * 0.16 },
-      rightTip: { x: beamTipX + beamWidth * 0.14, y: beamTipY - beamWidth * 0.12 },
+    disk: {
+      radius: diskRadius,
+      thickness: diskThickness,
+      glowIntensity,
+      tilt: random.range(-0.22, 0.16),
+      particleCount: 1800 + Math.round(diskThickness * 120),
     },
-    plumeCurve: {
-      start: { x: centerX + ringRadius * 0.78, y: centerY + ringRadius * 0.56 },
-      control: { x: centerX + width * 0.1, y: centerY + height * 0.22 },
-      end: { x: centerX + width * 0.02, y: height * random.range(0.52, 0.7) },
-    },
-    shardCurve: {
-      start: { x: centerX + ringRadius * 0.22, y: centerY + ringRadius * 1.02 },
-      control: { x: centerX - width * 0.02, y: height * 0.62 },
-      end: { x: beamBaseX + beamWidth * 0.9, y: beamBaseY - height * 0.14 },
-    },
-    accretionTilt: random.range(-0.18, 0.14),
-    monolith: {
-      x: monolithX,
-      y: monolithY,
-      width: monolithWidth,
-      height: monolithHeight,
-    },
+    constellations,
+    curves: layoutCurves(visibleCurves, width, height, { x: centerX, y: centerY }, random),
+    moons: layoutMoons(visibleMoons, width, height, { x: centerX, y: centerY }, diskRadius * 1.5, random),
+    portals: layoutPortals(random, width, height, centerX, centerY, diskRadius),
+    doors: layoutDoors(random, width, height),
+    dustDensity: 900 + Math.round(clamp(profile.letterCount / 2, 0, 1800)),
+    dustAlpha: clamp(0.28 + glowIntensity * 0.45, 0.28, 0.74),
   };
 }
 
@@ -163,30 +126,23 @@ function paintBackdrop(context, scene, width, height, random) {
   paintGlow(
     context,
     scene.centerX,
-    scene.centerY - scene.ringRadius * 0.2,
-    scene.ringRadius * 1.55,
-    hexToRgba(SIGNAL_COLORS.orange, 0.22),
+    scene.centerY,
+    scene.disk.radius * lerp(1.35, 2.05, scene.disk.glowIntensity),
+    hexToRgba(SIGNAL_COLORS.orange, 0.06 + scene.disk.glowIntensity * 0.18),
   );
   paintGlow(
     context,
-    scene.centerX + scene.ringRadius * 0.8,
-    scene.centerY + scene.ringRadius * 0.9,
-    scene.ringRadius * 1.2,
-    hexToRgba(SIGNAL_COLORS.cyan, 0.18),
-  );
-  paintGlow(
-    context,
-    lerp(scene.beam.leftBase.x, scene.beam.leftTip.x, 0.34),
-    lerp(scene.beam.leftBase.y, scene.beam.leftTip.y, 0.34) - 60,
-    380,
-    hexToRgba(SIGNAL_COLORS.pink, 0.14),
+    scene.centerX + scene.disk.radius * 0.66,
+    scene.centerY + scene.disk.radius * 0.34,
+    scene.disk.radius * lerp(1.15, 1.7, scene.disk.glowIntensity),
+    hexToRgba(SIGNAL_COLORS.cyan, 0.04 + scene.disk.glowIntensity * 0.14),
   );
 
   context.save();
-  for (let index = 0; index < 1200; index += 1) {
+  for (let index = 0; index < 1100; index += 1) {
     const x = random.range(0, width);
     const y = random.range(0, height);
-    const alpha = random.range(0.018, 0.06);
+    const alpha = random.range(0.012, 0.05);
     const size = random.range(0.5, 1.4);
     context.fillStyle = hexToRgba(random.pick(scene.palette.lines), alpha);
     context.fillRect(x, y, size, size);
@@ -194,23 +150,53 @@ function paintBackdrop(context, scene, width, height, random) {
   context.restore();
 }
 
-function paintStarfield(context, scene, width, height, random) {
+function paintSpaceCurves(context, scene) {
+  if (scene.curves.length === 0) {
+    return;
+  }
+
   context.save();
+  context.globalCompositeOperation = "screen";
 
-  for (let index = 0; index < scene.starCount; index += 1) {
-    const x = random.range(0, width);
-    const y = random.range(0, height);
-    const weight = Math.pow(random.next(), 2.6);
-    const radius = weight > 0.7 ? random.range(1.3, 2.8) : random.range(0.35, 1.5);
-    const alpha = 0.18 + weight * 0.78;
-    const color = random.chance(0.84) ? random.pick(scene.palette.lines) : random.pick(scene.palette.glows);
-    context.fillStyle = hexToRgba(color, alpha);
+  for (const curve of scene.curves) {
+    context.strokeStyle = hexToRgba(curve.color, curve.alpha);
+    context.lineWidth = curve.width;
+    context.beginPath();
+    context.moveTo(curve.start.x, curve.start.y);
+    context.bezierCurveTo(curve.controlA.x, curve.controlA.y, curve.controlB.x, curve.controlB.y, curve.end.x, curve.end.y);
+    context.stroke();
+  }
 
-    if (random.chance(0.24)) {
-      context.fillRect(x, y, radius, radius);
-    } else {
+  context.restore();
+}
+
+function paintConstellations(context, scene) {
+  if (scene.constellations.length === 0) {
+    return;
+  }
+
+  context.save();
+  context.globalCompositeOperation = "screen";
+
+  for (const constellation of scene.constellations) {
+    if (constellation.stars.length > 1) {
+      context.strokeStyle = hexToRgba(constellation.lineColor, constellation.lineAlpha);
+      context.lineWidth = constellation.lineWidth;
       context.beginPath();
-      context.arc(x, y, radius, 0, TAU);
+      context.moveTo(constellation.stars[0].x, constellation.stars[0].y);
+
+      for (let index = 1; index < constellation.stars.length; index += 1) {
+        context.lineTo(constellation.stars[index].x, constellation.stars[index].y);
+      }
+
+      context.stroke();
+    }
+
+    for (const star of constellation.stars) {
+      paintGlow(context, star.x, star.y, star.radius * 8, hexToRgba(star.color, star.alpha * 0.22));
+      context.fillStyle = hexToRgba(star.color, star.alpha);
+      context.beginPath();
+      context.arc(star.x, star.y, star.radius, 0, TAU);
       context.fill();
     }
   }
@@ -218,254 +204,149 @@ function paintStarfield(context, scene, width, height, random) {
   context.restore();
 }
 
-function paintInterfaceGrid(context, scene, width, height, random) {
-  const clusters = [
-    { x: width * 0.05, y: height * 0.04, flipX: 1, flipY: 1 },
-    { x: width * 0.78, y: height * 0.08, flipX: -1, flipY: 1 },
-    { x: width * 0.42, y: height * 0.03, flipX: 1, flipY: 1 },
-    { x: width * 0.42, y: height * 0.72, flipX: -1, flipY: -1 },
-  ];
-
-  context.save();
-  context.strokeStyle = hexToRgba(scene.palette.lines[0], 0.78);
-  context.fillStyle = hexToRgba(scene.palette.lines[0], 0.88);
-  context.lineWidth = 1.2;
-
-  for (let index = 0; index < Math.min(scene.interfaceCount, clusters.length); index += 1) {
-    const cluster = clusters[index];
-    drawCircuitCluster(context, cluster.x, cluster.y, cluster.flipX, cluster.flipY, random);
+function paintMoons(context, scene) {
+  if (scene.moons.length === 0) {
+    return;
   }
 
-  context.restore();
-}
+  for (const moon of scene.moons) {
+    paintGlow(context, moon.x, moon.y, moon.radius * 3.5, hexToRgba(moon.glowColor, moon.glowAlpha));
 
-function paintOrbitLines(context, scene, width, height, random) {
-  context.save();
-  context.lineWidth = 2;
-  context.globalAlpha = 0.72;
-
-  for (let index = 0; index < scene.orbitCount; index += 1) {
-    const baseY = height * (0.32 + index * 0.11) + random.range(-45, 38);
-    const controlY = baseY + random.range(-140, 140);
-    context.strokeStyle = hexToRgba(index % 2 === 0 ? SIGNAL_COLORS.gold : scene.palette.lines[2], 0.68);
-    context.beginPath();
-    context.moveTo(-80, baseY + random.range(-22, 18));
-    context.bezierCurveTo(
-      width * 0.24,
-      controlY,
-      width * 0.62,
-      controlY + random.range(-120, 120),
-      width + 80,
-      baseY + random.range(-32, 32),
+    const gradient = context.createRadialGradient(
+      moon.x - moon.radius * 0.24,
+      moon.y - moon.radius * 0.28,
+      moon.radius * 0.12,
+      moon.x,
+      moon.y,
+      moon.radius,
     );
-    context.stroke();
-  }
+    gradient.addColorStop(0, hexToRgba(SIGNAL_COLORS.cream, 0.92));
+    gradient.addColorStop(0.55, hexToRgba(moon.coreColor, 0.9));
+    gradient.addColorStop(1, hexToRgba(scene.palette.lines[0], 0.64));
 
-  context.restore();
+    context.save();
+    context.fillStyle = gradient;
+    context.beginPath();
+    context.arc(moon.x, moon.y, moon.radius, 0, TAU);
+    context.fill();
+
+    context.globalCompositeOperation = "multiply";
+    context.fillStyle = hexToRgba("#03040b", 0.84);
+    context.beginPath();
+    context.arc(moon.x + moon.phaseOffset, moon.y - moon.radius * 0.04, moon.radius * 0.92, 0, TAU);
+    context.fill();
+    context.restore();
+  }
 }
 
-function paintSupernova(context, scene, random) {
+function paintAccretionDisk(context, scene, random) {
+  const disk = scene.disk;
+
+  if (disk.glowIntensity > 0) {
+    paintGlow(
+      context,
+      scene.centerX,
+      scene.centerY,
+      disk.radius * lerp(1.45, 2.2, disk.glowIntensity),
+      hexToRgba(SIGNAL_COLORS.pink, 0.08 + disk.glowIntensity * 0.16),
+    );
+    paintGlow(
+      context,
+      scene.centerX,
+      scene.centerY,
+      disk.radius * lerp(1.2, 1.75, disk.glowIntensity),
+      hexToRgba(SIGNAL_COLORS.gold, 0.05 + disk.glowIntensity * 0.14),
+    );
+  }
+
   context.save();
   context.fillStyle = "#010103";
   context.beginPath();
-  context.ellipse(
-    scene.centerX,
-    scene.centerY,
-    scene.ringRadius * 0.76,
-    scene.ringRadius * 0.7,
-    scene.accretionTilt,
-    0,
-    TAU,
-  );
+  context.ellipse(scene.centerX, scene.centerY, disk.radius * 0.62, disk.radius * 0.54, disk.tilt, 0, TAU);
   context.fill();
   context.restore();
 
-  for (let layer = 0; layer < scene.ringCount; layer += 1) {
-    const radius = scene.ringRadius + layer * scene.ringThickness * 0.8;
-    const warmColors = [SIGNAL_COLORS.orange, scene.palette.glows[1], scene.palette.glows[2], SIGNAL_COLORS.gold];
-    const coolColors = [scene.palette.glows[3], scene.palette.glows[4], SIGNAL_COLORS.cyan];
-
-    paintParticleRing(context, random, {
-      centerX: scene.centerX,
-      centerY: scene.centerY,
-      radius,
-      ellipse: 0.93 - layer * 0.06,
-      thickness: scene.ringThickness,
-      count: 1800 + layer * 650,
-      warmColors,
-      coolColors,
-    });
-  }
+  paintParticleRing(context, random, {
+    centerX: scene.centerX,
+    centerY: scene.centerY,
+    radius: disk.radius,
+    ellipse: 0.72,
+    thickness: disk.thickness,
+    count: disk.particleCount,
+    warmColors: [SIGNAL_COLORS.orange, SIGNAL_COLORS.gold, SIGNAL_COLORS.cream],
+    coolColors: [scene.palette.glows[3], scene.palette.glows[4], SIGNAL_COLORS.cyan],
+  });
 
   context.save();
   context.globalCompositeOperation = "screen";
-  for (let index = 0; index < 1600; index += 1) {
-    const t = random.range(-1.4, 1.4);
-    const x = scene.centerX + t * scene.ringRadius * 1.9;
-    const y =
-      scene.centerY +
-      Math.sin(t * 2.1 + scene.accretionTilt) * scene.ringThickness * 0.65 +
-      spread(random, scene.ringThickness * 0.2);
-    const size = random.range(0.5, 1.8);
-    context.fillStyle = hexToRgba(
-      random.pick([SIGNAL_COLORS.orange, SIGNAL_COLORS.gold, scene.palette.lines[2]]),
-      random.range(0.12, 0.34),
-    );
-    context.fillRect(x, y, size, size);
-  }
-  context.restore();
-}
-
-function paintBeam(context, scene, width, height, random) {
-  const gradient = context.createLinearGradient(
-    scene.beam.leftBase.x,
-    scene.beam.leftBase.y,
-    scene.beam.rightTip.x,
-    scene.beam.rightTip.y,
-  );
-  gradient.addColorStop(0, hexToRgba(SIGNAL_COLORS.orange, 0.94));
-  gradient.addColorStop(0.45, hexToRgba(SIGNAL_COLORS.pink, 0.92));
-  gradient.addColorStop(1, hexToRgba(SIGNAL_COLORS.cream, 0.82));
-
-  context.save();
-  context.fillStyle = gradient;
+  context.strokeStyle = hexToRgba(scene.palette.lines[0], 0.12 + disk.glowIntensity * 0.2);
+  context.lineWidth = disk.thickness * 0.08;
   context.beginPath();
-  context.moveTo(scene.beam.leftBase.x, scene.beam.leftBase.y);
-  context.lineTo(scene.beam.rightBase.x, scene.beam.rightBase.y);
-  context.lineTo(scene.beam.rightTip.x, scene.beam.rightTip.y);
-  context.lineTo(scene.beam.leftTip.x, scene.beam.leftTip.y);
-  context.closePath();
-  context.fill();
+  context.ellipse(scene.centerX, scene.centerY, disk.radius * 1.02, disk.radius * 0.72, disk.tilt, 0, TAU);
+  context.stroke();
   context.restore();
-
-  paintParticleCloud(context, random, {
-    x: lerp(scene.beam.leftBase.x, scene.beam.leftTip.x, 0.36),
-    y: lerp(scene.beam.leftBase.y, scene.beam.leftTip.y, 0.42),
-    radiusX: width * 0.12,
-    radiusY: height * 0.08,
-    count: 1200,
-    colors: [SIGNAL_COLORS.orange, SIGNAL_COLORS.pink, SIGNAL_COLORS.cream],
-    minSize: 0.8,
-    maxSize: 2.1,
-    minAlpha: 0.04,
-    maxAlpha: 0.2,
-  });
 }
 
-function paintPlume(context, scene, random) {
-  scatterParticlesAlongQuadratic(context, random, {
-    start: scene.plumeCurve.start,
-    control: scene.plumeCurve.control,
-    end: scene.plumeCurve.end,
-    count: scene.plumeDensity,
-    spreadX: scene.ringThickness * 2.2,
-    spreadY: scene.ringThickness * 1.6,
-    colors: [scene.palette.glows[4], scene.palette.glows[3], SIGNAL_COLORS.cyan, scene.palette.lines[1]],
-    minSize: 0.7,
-    maxSize: 2.4,
-    minAlpha: 0.05,
-    maxAlpha: 0.26,
-  });
-
-  paintParticleCloud(context, random, {
-    x: scene.plumeCurve.end.x + 40,
-    y: scene.plumeCurve.end.y - 20,
-    radiusX: 120,
-    radiusY: 96,
-    count: 540,
-    colors: [scene.palette.glows[4], SIGNAL_COLORS.cyan, scene.palette.lines[1]],
-    minSize: 1,
-    maxSize: 3.2,
-    minAlpha: 0.05,
-    maxAlpha: 0.28,
-  });
-}
-
-function paintShards(context, scene, random) {
+function paintPortalsAndDoors(context, scene) {
   context.save();
   context.globalCompositeOperation = "screen";
 
-  for (let index = 0; index < scene.shardCount; index += 1) {
-    const t = index / Math.max(scene.shardCount - 1, 1);
-    const point = quadraticPoint(scene.shardCurve.start, scene.shardCurve.control, scene.shardCurve.end, t);
-    const tangent = quadraticTangent(scene.shardCurve.start, scene.shardCurve.control, scene.shardCurve.end, t);
-    const angle = Math.atan2(tangent.y, tangent.x);
-    const size = random.range(12, 34) * (1 - t * 0.45);
-    const px = point.x + spread(random, 26);
-    const py = point.y + spread(random, 22);
-
-    context.fillStyle = hexToRgba(random.chance(0.65) ? SIGNAL_COLORS.pink : SIGNAL_COLORS.violet, random.range(0.36, 0.82));
+  for (const portal of scene.portals) {
+    context.strokeStyle = hexToRgba(portal.color, portal.alpha);
+    context.lineWidth = portal.radius * 0.16;
     context.beginPath();
-    context.moveTo(px, py - size * 0.55);
-    context.lineTo(px + Math.cos(angle + 0.8) * size, py + Math.sin(angle + 0.8) * size);
-    context.lineTo(px + Math.cos(angle - 0.7) * size * 0.65, py + Math.sin(angle - 0.7) * size * 0.65);
-    context.closePath();
+    context.ellipse(portal.x, portal.y, portal.radius, portal.radius * 0.72, portal.tilt, 0, TAU);
+    context.stroke();
+    paintGlow(context, portal.x, portal.y, portal.radius * 2.6, hexToRgba(portal.color, portal.alpha * 0.22));
+  }
+
+  for (const door of scene.doors) {
+    context.fillStyle = hexToRgba("#03040c", 0.92);
+    context.strokeStyle = hexToRgba(door.color, door.alpha);
+    context.lineWidth = 3;
+    context.strokeRect(door.x, door.y, door.width, door.height);
+    context.fillRect(door.x + 5, door.y + 5, door.width - 10, door.height - 10);
+    context.beginPath();
+    context.arc(door.x + door.width * 0.5, door.y + 18, door.width * 0.16, 0, TAU);
+    context.fillStyle = hexToRgba(door.color, door.alpha * 0.72);
     context.fill();
   }
 
   context.restore();
 }
 
-function paintMonoliths(context, scene, random) {
-  const frame = scene.monolith;
+function paintDustHorizon(context, scene, width, height, random, intensity) {
+  const alphaScale = clamp(intensity * scene.dustAlpha, 0.08, 1);
 
   context.save();
-  context.fillStyle = hexToRgba("#02030a", 0.92);
-  context.strokeStyle = hexToRgba(scene.palette.lines[0], 0.92);
-  context.lineWidth = 4;
-  context.strokeRect(frame.x, frame.y, frame.width, frame.height);
-  context.fillRect(frame.x + 6, frame.y + 6, frame.width - 12, frame.height - 12);
-  context.strokeRect(frame.x + frame.width * 0.44, frame.y + frame.height * 0.18, frame.width * 0.28, frame.height * 0.58);
-
-  context.beginPath();
-  context.arc(frame.x + frame.width * 0.5, frame.y + 18, frame.width * 0.18, Math.PI, 0);
-  context.stroke();
-
-  const panelWidth = frame.width * 0.36;
-  const panelHeight = frame.height * 0.1;
-  context.strokeRect(frame.x - panelWidth - 14, frame.y + frame.height * 0.72, panelWidth, panelHeight);
-  context.fillRect(frame.x - panelWidth - 10, frame.y + frame.height * 0.72 + 4, panelWidth - 8, panelHeight - 8);
-
-  for (let index = 1; index < scene.monolithCount; index += 1) {
-    const scale = 1 - index * 0.22;
-    const offsetX = frame.width * random.range(-0.8, 1.2) * index;
-    const offsetY = frame.height * random.range(0.14, 0.28) * index;
-    context.strokeRect(frame.x + offsetX, frame.y + offsetY, frame.width * 0.34 * scale, frame.height * 0.2 * scale);
-  }
-
-  context.restore();
-}
-
-function paintDustHorizon(context, scene, width, height, random) {
-  context.save();
-  context.fillStyle = hexToRgba(SIGNAL_COLORS.violet, 0.88);
-  context.fillRect(0, height - 34, width, 34);
+  context.fillStyle = hexToRgba(SIGNAL_COLORS.violet, 0.06 * alphaScale);
+  context.fillRect(0, height - 48, width, 48);
   context.restore();
 
   paintParticleCloud(context, random, {
     x: width * 0.14,
-    y: height * 0.82,
-    radiusX: width * 0.14,
-    radiusY: height * 0.1,
-    count: scene.dustDensity,
+    y: height * 0.83,
+    radiusX: width * 0.18,
+    radiusY: height * 0.11,
+    count: Math.round(scene.dustDensity * intensity),
     colors: [SIGNAL_COLORS.orange, SIGNAL_COLORS.gold, SIGNAL_COLORS.cream],
-    minSize: 0.6,
+    minSize: 0.5,
     maxSize: 2.5,
-    minAlpha: 0.04,
-    maxAlpha: 0.22,
+    minAlpha: 0.03 * alphaScale,
+    maxAlpha: 0.18 * alphaScale,
   });
 
   paintParticleCloud(context, random, {
-    x: width * 0.88,
+    x: width * 0.86,
     y: height * 0.84,
-    radiusX: width * 0.18,
+    radiusX: width * 0.2,
     radiusY: height * 0.12,
-    count: scene.dustDensity,
+    count: Math.round(scene.dustDensity * intensity),
     colors: [SIGNAL_COLORS.orange, SIGNAL_COLORS.gold, SIGNAL_COLORS.cream],
-    minSize: 0.6,
+    minSize: 0.5,
     maxSize: 2.6,
-    minAlpha: 0.04,
-    maxAlpha: 0.22,
+    minAlpha: 0.03 * alphaScale,
+    maxAlpha: 0.18 * alphaScale,
   });
 }
 
@@ -500,7 +381,7 @@ function paintParticleCloud(context, random, { x, y, radiusX, radiusY, count, co
     const size = random.range(minSize, maxSize);
     context.fillStyle = hexToRgba(random.pick(colors), random.range(minAlpha, maxAlpha));
 
-    if (random.chance(0.26)) {
+    if (random.chance(0.24)) {
       context.beginPath();
       context.arc(px, py, size, 0, TAU);
       context.fill();
@@ -512,128 +393,343 @@ function paintParticleCloud(context, random, { x, y, radiusX, radiusY, count, co
   context.restore();
 }
 
-function scatterParticlesAlongQuadratic(context, random, { start, control, end, count, spreadX, spreadY, colors, minSize, maxSize, minAlpha, maxAlpha }) {
-  context.save();
-  context.globalCompositeOperation = "screen";
+function buildTextCosmos(text) {
+  const analysisText = normalizeForAnalysis(text);
+  let letterCount = 0;
+  let vowelCount = 0;
+  let consonantCount = 0;
+  let eCount = 0;
+  let roundCount = 0;
+  let curvedCount = 0;
 
-  for (let index = 0; index < count; index += 1) {
-    const t = random.next();
-    const point = quadraticPoint(start, control, end, t);
-    const tangent = quadraticTangent(start, control, end, t);
-    const angle = Math.atan2(tangent.y, tangent.x);
-    const lateral = spread(random, lerp(spreadX, spreadX * 0.35, t));
-    const vertical = spread(random, lerp(spreadY, spreadY * 0.45, t));
-    const px = point.x + Math.cos(angle + Math.PI / 2) * lateral + Math.cos(angle) * vertical * 0.24;
-    const py = point.y + Math.sin(angle + Math.PI / 2) * lateral + Math.sin(angle) * vertical * 0.24;
-    const size = random.range(minSize, maxSize);
-    context.fillStyle = hexToRgba(random.pick(colors), random.range(minAlpha, maxAlpha));
+  for (const character of analysisText) {
+    if (character >= "a" && character <= "z") {
+      letterCount += 1;
 
-    if (random.chance(0.2)) {
-      context.beginPath();
-      context.arc(px, py, size, 0, TAU);
-      context.fill();
-    } else {
-      context.fillRect(px, py, size, size);
+      if (VOWELS.has(character)) {
+        vowelCount += 1;
+      } else {
+        consonantCount += 1;
+      }
+
+      if (character === "e") {
+        eCount += 1;
+      }
+
+      if (ROUND_CHARACTERS.has(character)) {
+        roundCount += 1;
+      }
+
+      if (CURVED_LETTERS.has(character)) {
+        curvedCount += 1;
+      }
+    } else if (ROUND_CHARACTERS.has(character)) {
+      roundCount += 1;
     }
   }
 
-  context.restore();
-}
+  const constellations = [];
+  let wordIndex = 0;
 
-function drawCircuitCluster(context, originX, originY, flipX, flipY, random) {
-  const first = 90 + random.range(-18, 22);
-  const second = 120 + random.range(-16, 20);
+  for (const match of analysisText.matchAll(/[a-z0-9]+/g)) {
+    const token = match[0];
+    const eIndexes = [];
 
-  context.beginPath();
-  context.moveTo(originX, originY);
-  context.lineTo(originX + first * flipX, originY);
-  context.lineTo(originX + first * flipX, originY + second * flipY);
-  context.stroke();
-
-  context.beginPath();
-  context.arc(originX + first * flipX, originY, 6, 0, TAU);
-  context.fill();
-
-  drawRectPath(context, originX + (first + 26) * flipX, originY + (second - 44) * flipY, 34 * flipX, 34 * flipY);
-  context.stroke();
-  context.fillRect(originX + (first + 52) * flipX, originY + (second + 10) * flipY, 8, 8);
-}
-
-function drawRectPath(context, x, y, width, height) {
-  context.beginPath();
-  context.moveTo(x, y);
-  context.lineTo(x + width, y);
-  context.lineTo(x + width, y + height);
-  context.lineTo(x, y + height);
-  context.closePath();
-}
-
-function buildCharacterProfile(text) {
-  const source = String(text ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
-  const total = Math.max(source.length, 1);
-  const counts = {
-    ring: 0,
-    orbit: 0,
-    nebula: 0,
-    pillar: 0,
-    shards: 0,
-    sparks: 0,
-    nodes: 0,
-    void: 0,
-  };
-
-  for (const character of source) {
-    for (const [key, group] of Object.entries(FEATURE_CHARACTERS)) {
-      if (group.includes(character)) {
-        counts[key] += 1;
+    for (let index = 0; index < token.length; index += 1) {
+      if (token[index] === "e") {
+        eIndexes.push(index);
       }
     }
+
+    for (const cluster of splitConstellationByDistance(eIndexes)) {
+      constellations.push({
+        wordIndex,
+        length: token.length,
+        startIndex: match.index ?? 0,
+        eIndexes: cluster,
+      });
+    }
+
+    wordIndex += 1;
   }
 
-  return Object.fromEntries(Object.entries(counts).map(([key, value]) => [key, value / total]));
+  const totalLetters = Math.max(letterCount, 1);
+
+  return {
+    letterCount,
+    vowelCount,
+    consonantCount,
+    eCount,
+    roundCount,
+    curvedCount,
+    vowelDensity: vowelCount / totalLetters,
+    consonantDensity: consonantCount / totalLetters,
+    constellations,
+  };
 }
 
-function pickPaletteKey(tokens, normalizedText, variant) {
-  if (hasAnyToken(tokens, ["orange", "cyan", "pink", "magenta", "supernova", "ring", "plume"])) {
-    return "supernova";
+function splitConstellationByDistance(eIndexes) {
+  if (eIndexes.length === 0) {
+    return [];
   }
 
-  if (hasAnyToken(tokens, ["atlas", "grid", "map", "signal"])) {
-    return "atlas";
+  const groups = [];
+  let current = [eIndexes[0]];
+
+  for (let index = 1; index < eIndexes.length; index += 1) {
+    if (eIndexes[index] - eIndexes[index - 1] <= 3) {
+      current.push(eIndexes[index]);
+      continue;
+    }
+
+    groups.push(current);
+    current = [eIndexes[index]];
   }
 
-  if (hasAnyToken(tokens, ["synapse", "neon", "electric"])) {
-    return "synapse";
+  groups.push(current);
+  return groups;
+}
+
+function layoutConstellations(clusters, targetStarCount, width, height, center, avoidRadius, random) {
+  const projected = projectConstellationClusters(clusters, targetStarCount);
+  if (projected.length === 0) {
+    return [];
   }
 
-  if (hasAnyToken(tokens, ["ash", "stone", "tectonic", "mineral"])) {
-    return "tectonic";
+  const columns = Math.max(2, Math.ceil(Math.sqrt(projected.length * 1.6)));
+  const rows = Math.max(1, Math.ceil(projected.length / columns));
+  const constellations = [];
+
+  for (let index = 0; index < projected.length; index += 1) {
+    const cluster = projected[index];
+    const column = index % columns;
+    const row = Math.floor(index / columns);
+    let anchorX = lerp(width * 0.08, width * 0.92, columns === 1 ? 0.5 : column / (columns - 1)) + spread(random, width * 0.035);
+    const anchorY = lerp(height * 0.08, height * 0.56, rows === 1 ? 0.5 : row / Math.max(rows - 1, 1)) + spread(random, height * 0.03);
+
+    if (distance(anchorX, anchorY, center.x, center.y) < avoidRadius) {
+      const direction = anchorX < center.x ? -1 : 1;
+      anchorX = center.x + direction * avoidRadius * random.range(1.02, 1.18);
+    }
+
+    const starSpan = cluster.eIndexes.length > 1 ? cluster.eIndexes[cluster.eIndexes.length - 1] - cluster.eIndexes[0] : 0;
+    const localWidth = clamp(24 + starSpan * 22 + cluster.eIndexes.length * 10, 18, width * 0.12);
+    const localHeight = clamp(16 + cluster.eIndexes.length * 7, 12, height * 0.08);
+    const angle = random.range(-0.7, 0.7);
+    const cosAngle = Math.cos(angle);
+    const sinAngle = Math.sin(angle);
+    const relativeSpan = Math.max(starSpan, 1);
+    const stars = [];
+
+    for (let starIndex = 0; starIndex < cluster.eIndexes.length; starIndex += 1) {
+      const position = cluster.eIndexes[starIndex];
+      const normalizedX = cluster.eIndexes.length === 1 ? 0 : ((position - cluster.eIndexes[0]) / relativeSpan - 0.5) * localWidth;
+      const normalizedY = Math.sin((position + cluster.wordIndex) * 0.95) * localHeight * 0.3 + spread(random, localHeight * 0.16);
+      const rotatedX = normalizedX * cosAngle - normalizedY * sinAngle;
+      const rotatedY = normalizedX * sinAngle + normalizedY * cosAngle;
+
+      stars.push({
+        x: anchorX + rotatedX,
+        y: anchorY + rotatedY,
+        radius: random.range(1.1, 2.7),
+        alpha: random.range(0.72, 0.98),
+        color: random.chance(0.78) ? SIGNAL_COLORS.cream : random.pick([SIGNAL_COLORS.gold, SIGNAL_COLORS.cyan, SIGNAL_COLORS.pink]),
+      });
+    }
+
+    constellations.push({
+      stars,
+      lineWidth: random.range(1, 2.2),
+      lineAlpha: random.range(0.16, 0.34),
+      lineColor: random.pick([SIGNAL_COLORS.gold, sceneLineColor(projected.length, index)]),
+    });
   }
 
+  return constellations;
+}
+
+function projectConstellationClusters(clusters, targetStarCount) {
+  const totalStars = clusters.reduce((count, cluster) => count + cluster.eIndexes.length, 0);
+  if (totalStars === 0 || targetStarCount === 0) {
+    return [];
+  }
+
+  if (totalStars <= targetStarCount && clusters.length <= MAX_VISIBLE_CONSTELLATIONS) {
+    return clusters.map((cluster) => ({ ...cluster, eIndexes: [...cluster.eIndexes] }));
+  }
+
+  const clusterBudget = Math.min(
+    clusters.length,
+    MAX_VISIBLE_CONSTELLATIONS,
+    Math.max(1, Math.round(targetStarCount * 0.38)),
+  );
+  const selected = clusters.length <= clusterBudget ? clusters : sampleEvenly(clusters, clusterBudget);
+  const selectedTotal = selected.reduce((count, cluster) => count + cluster.eIndexes.length, 0);
+
+  let remaining = targetStarCount;
+  const projected = selected.map((cluster) => {
+    const ideal = Math.max(1, Math.round((cluster.eIndexes.length / selectedTotal) * targetStarCount));
+    const visibleCount = Math.min(cluster.eIndexes.length, ideal);
+    remaining -= visibleCount;
+    return {
+      ...cluster,
+      visibleCount,
+    };
+  });
+
+  let index = 0;
+  while (remaining > 0 && projected.length > 0) {
+    const cluster = projected[index % projected.length];
+    if (cluster.visibleCount < cluster.eIndexes.length) {
+      cluster.visibleCount += 1;
+      remaining -= 1;
+    }
+    index += 1;
+    if (index > projected.length * 4) {
+      break;
+    }
+  }
+
+  return projected.map((cluster) => ({
+    ...cluster,
+    eIndexes: sampleEvenly(cluster.eIndexes, cluster.visibleCount),
+  }));
+}
+
+function layoutMoons(count, width, height, center, avoidRadius, random) {
+  const moons = [];
+
+  for (let index = 0; index < count; index += 1) {
+    const angle = -Math.PI * 0.88 + (index / Math.max(count - 1, 1)) * Math.PI * 1.76 + random.range(-0.16, 0.16);
+    const distanceFromCenter = avoidRadius + random.range(width * 0.08, width * 0.28);
+    const x = center.x + Math.cos(angle) * distanceFromCenter;
+    const y = center.y + Math.sin(angle) * distanceFromCenter * 0.72;
+    const radius = clamp(width * random.range(0.01, 0.032), width * 0.01, width * 0.04);
+
+    moons.push({
+      x,
+      y: Math.min(y, height * 0.62),
+      radius,
+      phaseOffset: random.sign() * radius * random.range(0.18, 0.62),
+      coreColor: random.pick([SIGNAL_COLORS.gold, SIGNAL_COLORS.cyan, SIGNAL_COLORS.violet]),
+      glowColor: random.pick([SIGNAL_COLORS.gold, SIGNAL_COLORS.cyan, SIGNAL_COLORS.pink]),
+      glowAlpha: random.range(0.12, 0.24),
+    });
+  }
+
+  return moons;
+}
+
+function layoutCurves(count, width, height, center, random) {
+  const curves = [];
+
+  for (let index = 0; index < count; index += 1) {
+    const startLeft = random.chance(0.5);
+    const startX = startLeft ? -80 : width + 80;
+    const endX = startLeft ? width + 80 : -80;
+    const baseY = height * (0.18 + (index / Math.max(count, 1)) * 0.56) + random.range(-42, 42);
+    const sweep = random.range(height * 0.08, height * 0.22) * random.sign();
+
+    curves.push({
+      start: { x: startX, y: baseY + spread(random, 18) },
+      controlA: { x: width * random.range(0.18, 0.36), y: center.y + sweep },
+      controlB: { x: width * random.range(0.62, 0.86), y: center.y - sweep * random.range(0.65, 1.1) },
+      end: { x: endX, y: baseY + spread(random, 18) },
+      width: random.range(1.4, 3.6),
+      alpha: random.range(0.16, 0.42),
+      color: random.pick([SIGNAL_COLORS.gold, SIGNAL_COLORS.cyan, SIGNAL_COLORS.violet, SIGNAL_COLORS.pink]),
+    });
+  }
+
+  return curves;
+}
+
+function layoutPortals(random, width, height, centerX, centerY, diskRadius) {
+  const count = random.int(0, 2);
+  const portals = [];
+
+  for (let index = 0; index < count; index += 1) {
+    const side = index % 2 === 0 ? -1 : 1;
+    const x = centerX + side * random.range(diskRadius * 1.5, width * 0.34);
+    const y = height * random.range(0.62, 0.8);
+
+    portals.push({
+      x,
+      y,
+      radius: width * random.range(0.03, 0.06),
+      tilt: random.range(-0.3, 0.3),
+      color: random.pick([SIGNAL_COLORS.cyan, SIGNAL_COLORS.pink, SIGNAL_COLORS.violet]),
+      alpha: random.range(0.46, 0.82),
+    });
+  }
+
+  return portals;
+}
+
+function layoutDoors(random, width, height) {
+  const count = random.int(1, 3);
+  const doors = [];
+
+  for (let index = 0; index < count; index += 1) {
+    const widthScale = width * random.range(0.035, 0.07);
+    const heightScale = height * random.range(0.13, 0.22);
+    doors.push({
+      x: width * (0.1 + index * 0.26) + spread(random, width * 0.035),
+      y: height * random.range(0.68, 0.82),
+      width: widthScale,
+      height: heightScale,
+      color: random.pick([SIGNAL_COLORS.gold, SIGNAL_COLORS.cyan, SIGNAL_COLORS.cream]),
+      alpha: random.range(0.48, 0.86),
+    });
+  }
+
+  return doors;
+}
+
+function pickPaletteKey(normalizedText, variant) {
   return PALETTE_KEYS[hashTextToSeed(`${normalizedText}|palette|${variant}`) % PALETTE_KEYS.length];
 }
 
-function keywordBoost(tokens, words, amount) {
-  return words.some((word) => tokens.has(word)) ? amount : 0;
+function normalizeForAnalysis(text) {
+  return String(text ?? "")
+    .normalize("NFD")
+    .replace(/\p{M}+/gu, "")
+    .toLowerCase();
 }
 
-function hasAnyToken(tokens, expectedTokens) {
-  return expectedTokens.some((token) => tokens.has(token));
+function compressVisibleCount(rawCount, maxVisible, exactThreshold) {
+  if (rawCount <= exactThreshold) {
+    return rawCount;
+  }
+
+  const tail = rawCount - exactThreshold;
+  return Math.min(
+    maxVisible,
+    exactThreshold + Math.round((maxVisible - exactThreshold) * (tail / (tail + exactThreshold))),
+  );
 }
 
-function quadraticPoint(start, control, end, t) {
-  const inverse = 1 - t;
-  return {
-    x: inverse * inverse * start.x + 2 * inverse * t * control.x + t * t * end.x,
-    y: inverse * inverse * start.y + 2 * inverse * t * control.y + t * t * end.y,
-  };
+function sampleEvenly(values, targetCount) {
+  if (targetCount >= values.length) {
+    return [...values];
+  }
+
+  if (targetCount <= 0) {
+    return [];
+  }
+
+  const sampled = [];
+
+  for (let index = 0; index < targetCount; index += 1) {
+    const position = Math.floor((index * values.length) / targetCount);
+    sampled.push(values[position]);
+  }
+
+  return sampled;
 }
 
-function quadraticTangent(start, control, end, t) {
-  return {
-    x: 2 * (1 - t) * (control.x - start.x) + 2 * t * (end.x - control.x),
-    y: 2 * (1 - t) * (control.y - start.y) + 2 * t * (end.y - control.y),
-  };
+function sceneLineColor(total, index) {
+  return index % 2 === 0 || total < 4 ? SIGNAL_COLORS.cyan : SIGNAL_COLORS.deepViolet;
 }
 
 function paintGlow(context, x, y, radius, color) {
@@ -667,11 +763,6 @@ function hexToRgba(hexColor, alpha) {
   return `rgba(${parts[0]}, ${parts[1]}, ${parts[2]}, ${clamp(alpha, 0, 1)})`;
 }
 
-function scaleCount(value, min, max, threshold) {
-  const normalized = clamp(value / threshold, 0, 1);
-  return Math.round(min + (max - min) * normalized);
-}
-
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
@@ -682,4 +773,12 @@ function lerp(start, end, factor) {
 
 function spread(random, amount) {
   return (random.next() + random.next() + random.next() - 1.5) * amount;
+}
+
+function logScaled(value, weight) {
+  return Math.log1p(Math.max(value, 0)) * weight;
+}
+
+function distance(ax, ay, bx, by) {
+  return Math.hypot(ax - bx, ay - by);
 }

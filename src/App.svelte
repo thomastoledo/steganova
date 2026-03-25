@@ -3,8 +3,8 @@
   import ImageDecodePanel from "./lib/ui/ImageDecodePanel.svelte";
   import { createPromptMessage, MAX_PROMPT_CHARACTERS } from "./lib/domain/promptMessage.js";
 
-  const DEFAULT_PROMPT =
-    "A burning orange ring above a cyan plume, a magenta corridor, gold orbit lines and a lone monolith in cosmic dust.";
+  const numberFormatter = new Intl.NumberFormat("en-US");
+  const DEFAULT_PROMPT = "One silver moon crosses the open ether while secret doors hum under a quiet sky.";
 
   let activeMode = "generate";
   let draftText = DEFAULT_PROMPT;
@@ -76,10 +76,10 @@
       <article class="composer-panel plain-frame">
         <div class="section-head">
           <div>
-            <p class="section-kicker">Prompt</p>
-            <h1>Describe the detonation</h1>
+            <p class="section-kicker">Payload</p>
+            <h1>Write what the image should hide</h1>
           </div>
-          <span class="side-note">{draftPrompt.characterCount} / {MAX_PROMPT_CHARACTERS}</span>
+          <span class="side-note">{numberFormatter.format(draftPrompt.characterCount)} / {numberFormatter.format(MAX_PROMPT_CHARACTERS)}</span>
         </div>
 
         <textarea
@@ -88,10 +88,13 @@
           class:invalid={!draftPrompt.isWithinLimit}
           class="prompt-area"
           spellcheck="false"
-          placeholder="An orange ring over a cyan cloud, a pink corridor, orbit lines and a lone tower."
+          placeholder="A secret sentence, a note, or an ASCII/base64 payload to hide in the PNG."
         ></textarea>
 
-        <p class="section-note">500 characters max. The exact sentence is hidden inside the PNG export.</p>
+        <p class="section-note">
+          Up to {numberFormatter.format(MAX_PROMPT_CHARACTERS)} ASCII characters fit at the default export size. The
+          exact payload is hidden inside the PNG export.
+        </p>
 
         <div class="button-row">
           <button class="action primary" on:click={drawScene} disabled={generationDisabled}>Generate</button>
@@ -104,7 +107,7 @@
         <div class="section-head">
           <div>
             <p class="section-kicker">Result</p>
-            <h2>One supernova render</h2>
+            <h2>One generated sky</h2>
           </div>
           <span class="side-note">variant {variant + 1}</span>
         </div>

@@ -1,4 +1,12 @@
-export const MAX_PROMPT_CHARACTERS = 500;
+export const DEFAULT_ARTWORK_WIDTH = 1600;
+export const DEFAULT_ARTWORK_HEIGHT = 1120;
+
+const RGB_CHANNELS = 3;
+const STEGO_HEADER_BYTES = 8;
+const textEncoder = new TextEncoder();
+
+export const MAX_PROMPT_CHARACTERS =
+  Math.floor((DEFAULT_ARTWORK_WIDTH * DEFAULT_ARTWORK_HEIGHT * RGB_CHANNELS) / 8) - STEGO_HEADER_BYTES;
 
 const STOP_WORDS = new Set([
   "a",
@@ -45,6 +53,7 @@ export function countCharacters(text) {
 export function createPromptMessage(text) {
   const sourceText = String(text ?? "");
   const normalizedText = sourceText.replace(/\s+/g, " ").trim();
+  const payloadBytes = textEncoder.encode(normalizedText).length;
   const words = normalizedText.length === 0 ? [] : normalizedText.split(" ");
   const cleanedWords = words.map(cleanToken).filter(Boolean);
   const uniqueWords = new Set(cleanedWords);
@@ -55,10 +64,11 @@ export function createPromptMessage(text) {
     text: sourceText,
     normalizedText,
     characterCount: normalizedText.length,
-    remainingCharacters: MAX_PROMPT_CHARACTERS - normalizedText.length,
+    payloadBytes,
+    remainingCharacters: MAX_PROMPT_CHARACTERS - payloadBytes,
     wordCount: words.length,
     isEmpty: normalizedText.length === 0,
-    isWithinLimit: normalizedText.length <= MAX_PROMPT_CHARACTERS,
+    isWithinLimit: payloadBytes <= MAX_PROMPT_CHARACTERS,
     focusTokens: buildFocusTokens(cleanedWords),
     cadence: {
       averageWordLength: cleanedWords.length === 0 ? 0 : totalLetters / cleanedWords.length,
