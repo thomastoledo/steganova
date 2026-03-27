@@ -1,18 +1,27 @@
 <script>
+  import { onDestroy } from "svelte";
+  import { buildObjectUrlFromPayload, parseEmbeddedPayload } from "../application/filePayload.js";
   import { decodeMessageFromCanvas } from "../infrastructure/steganography/canvasSteganography.js";
 
-  const sizeFormatter = new Intl.NumberFormat("en-US");
+  const numberFormatter = new Intl.NumberFormat("en-US");
 
   let fileInput;
   let previewCanvas;
+
   let imageName = "";
   let imageSize = 0;
   let imageWidth = 0;
   let imageHeight = 0;
   let decodeError = "";
-  let decodeStatus = "Upload a PNG from Steganova to extract its hidden sentence.";
+  let decodeStatus = "Upload an image to extract the hidden base64 payload if one exists.";
   let decodedMessage = "";
   let hiddenMessageFound = false;
+  let decodedPayload = null;
+  let extractedFileUrl = "";
+
+  onDestroy(() => {
+    revokeUrl(extractedFileUrl);
+  });
 
   function openFilePicker() {
     fileInput?.click();
@@ -30,10 +39,8 @@
   }
 
   async function decodeFile(file) {
-    decodeError = "";
+    resetDecodedState();
     decodeStatus = "Loading image…";
-    decodedMessage = "";
-    hiddenMessageFound = false;
     imageName = file.name;
     imageSize = file.size;
 
@@ -53,24 +60,27 @@
 
       const message = decodeMessageFromCanvas(previewCanvas);
       if (message === null) {
-        decodeStatus = "No hidden Steganova message was detected in this image.";
+        decodeStatus = "No hidden Steganova payload was detected in this image.";
         return;
       }
 
       hiddenMessageFound = true;
-      decodedMessage = message;
-      decodeStatus =
-        message.length > 0
-          ? "Hidden message successfully decoded."
-          : "An empty hidden message was detected in this image.";
+      decodedPayload = parseEmbeddedPayload(message);
+      decodedMessage = decodedPayload.structured ? decodedPayload.base64 : decodedPayload.rawText;
+
+      revokeUrl(extractedFileUrl);
+      extractedFileUrl = decodedPayload.structured ? buildObjectUrlFromPayload(decodedPayload) : "";
+
+      decodeStatus = decodedPayload.structured
+        ? "Hidden payload decoded successfully."
+        : "A legacy plain-text payload was detected.";
     } catch (error) {
-      imageWidth = 0;
-      imageHeight = 0;
       decodeError =
         error instanceof Error && error.message.length > 0
           ? error.message
           : "Unable to decode the uploaded image.";
       decodeStatus = "Decoding failed.";
+      hiddenMessageFound = false;
     }
   }
 
@@ -81,10 +91,34 @@
 
     try {
       await navigator.clipboard.writeText(decodedMessage);
-      decodeStatus = "Decoded message copied to the clipboard.";
+      decodeStatus = decodedPayload?.structured
+        ? "Base64 copied to the clipboard."
+        : "Legacy text payload copied to the clipboard.";
     } catch {
-      decodeStatus = "Copy failed. The decoded message is still visible below.";
+      decodeStatus = "Copy failed. The decoded payload is still visible below.";
     }
+  }
+
+  function downloadExtractedFile() {
+    if (!decodedPayload || !hiddenMessageFound) {
+      return;
+    }
+
+    if (decodedPayload.structured && extractedFileUrl) {
+      const link = document.createElement("a");
+      link.href = extractedFileUrl;
+      link.download = decodedPayload.fileName;
+      link.click();
+      return;
+    }
+
+    const blob = new Blob([decodedPayload.rawText], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = decodedPayload.fileName;
+    link.click();
+    URL.revokeObjectURL(url);
   }
 
   function resetDecoder() {
@@ -93,9 +127,9 @@
     imageWidth = 0;
     imageHeight = 0;
     decodeError = "";
-    decodeStatus = "Upload a PNG from Steganova to extract its hidden sentence.";
-    decodedMessage = "";
-    hiddenMessageFound = false;
+    decodeStatus = "Upload an image to extract the hidden base64 payload if one exists.";
+
+    resetDecodedState();
 
     if (previewCanvas) {
       const context = previewCanvas.getContext("2d", { willReadFrequently: true });
@@ -107,6 +141,15 @@
     if (fileInput) {
       fileInput.value = "";
     }
+  }
+
+  function resetDecodedState() {
+    decodeError = "";
+    decodedMessage = "";
+    hiddenMessageFound = false;
+    decodedPayload = null;
+    revokeUrl(extractedFileUrl);
+    extractedFileUrl = "";
   }
 
   function loadImage(file) {
@@ -127,6 +170,12 @@
       image.src = objectUrl;
     });
   }
+
+  function revokeUrl(url) {
+    if (url) {
+      URL.revokeObjectURL(url);
+    }
+  }
 </script>
 
 <section class="workspace-grid">
@@ -134,16 +183,17 @@
     <div class="section-head">
       <div>
         <p class="section-kicker">Decode</p>
-        <h1>Upload an image</h1>
+        <h1>Upload an image and recover the file</h1>
       </div>
+      <span class="side-note">{hiddenMessageFound ? "payload found" : "decoder"}</span>
     </div>
 
     <input bind:this={fileInput} class="visually-hidden" type="file" accept="image/png,image/*" on:change={handleFileChange} />
 
     <div class="decode-dropzone">
       <p class="section-note">
-        Upload a PNG generated by Steganova. The image is redrawn into a canvas at full size, then the hidden payload
-        is read back.
+        Steganova reads the hidden payload from the image canvas, restores the base64, and tells you whether the
+        embedded file is an image, video, PDF, text file, or another binary format.
       </p>
 
       <div class="button-row">
@@ -157,7 +207,7 @@
       {#if imageName}
         <div class="decode-metrics">
           <span class="metric-pill">{imageName}</span>
-          <span class="metric-pill dashed">{sizeFormatter.format(imageSize)} bytes</span>
+          <span class="metric-pill dashed">{numberFormatter.format(imageSize)} bytes</span>
           {#if imageWidth > 0 && imageHeight > 0}
             <span class="metric-pill dotted">{imageWidth} × {imageHeight}</span>
           {/if}
@@ -165,18 +215,40 @@
       {/if}
     </div>
 
+    {#if decodedPayload}
+      <div class="status-block">
+        <p class="section-kicker">Detected file</p>
+        <div class="decode-metrics">
+          <span class="metric-pill">{decodedPayload.fileName}</span>
+          <span class="metric-pill dashed">{decodedPayload.kindLabel}</span>
+          <span class="metric-pill dotted">{decodedPayload.mimeType}</span>
+          <span class="metric-pill">{numberFormatter.format(decodedPayload.byteLength)} bytes</span>
+        </div>
+      </div>
+    {/if}
+
     {#if decodeError}
       <p class="decode-error">{decodeError}</p>
     {/if}
 
     <label class="decode-result">
-      <span class="section-kicker">Decoded message</span>
-      <textarea readonly class="decode-output" placeholder="The hidden sentence will appear here.">{decodedMessage}</textarea>
+      <span class="section-kicker">{decodedPayload?.structured ? "Decoded base64" : "Decoded payload"}</span>
+      <textarea readonly class="decode-output" placeholder="The recovered base64 will appear here.">{decodedMessage}</textarea>
     </label>
+
+    {#if decodedPayload?.isTextLike && decodedPayload.textPreview}
+      <div class="text-preview">
+        <p class="section-kicker">Text preview</p>
+        <pre>{decodedPayload.textPreview.slice(0, 1400)}{decodedPayload.textPreview.length > 1400 ? "..." : ""}</pre>
+      </div>
+    {/if}
 
     <div class="button-row">
       <button class="action secondary" type="button" on:click={copyDecodedMessage} disabled={!hiddenMessageFound}>
-        Copy message
+        Copy payload
+      </button>
+      <button class="action primary" type="button" on:click={downloadExtractedFile} disabled={!hiddenMessageFound}>
+        Download file
       </button>
     </div>
   </article>
@@ -187,7 +259,7 @@
         <p class="section-kicker">Preview</p>
         <h2>Uploaded image</h2>
       </div>
-      <span class="side-note">{hiddenMessageFound ? "message found" : "waiting"}</span>
+      <span class="side-note">{hiddenMessageFound ? decodedPayload?.kindLabel ?? "found" : "waiting"}</span>
     </div>
 
     <div class="preview-shell">
@@ -200,9 +272,16 @@
       {/if}
     </div>
 
+    {#if decodedPayload?.structured && decodedPayload.mimeType.startsWith("image/") && extractedFileUrl}
+      <div class="artifact-preview">
+        <p class="section-kicker">Recovered file preview</p>
+        <img src={extractedFileUrl} alt="Recovered hidden file preview" />
+      </div>
+    {/if}
+
     <p class="footer-note">
-      Steganova decoding works only if the PNG still preserves the original pixel data. Heavy recompression or
-      screenshots may destroy the hidden bits.
+      The extracted file can be downloaded directly when metadata is present. For older images that only hide plain
+      text, Steganova falls back to a `.txt` download.
     </p>
   </section>
 </section>
@@ -221,7 +300,8 @@
   }
 
   .decode-dropzone,
-  .status-block {
+  .status-block,
+  .text-preview {
     display: flex;
     flex-direction: column;
     gap: 12px;
@@ -259,83 +339,99 @@
 
   .metric-pill.dotted {
     border-style: dotted;
-    border-color: rgba(255, 121, 221, 0.52);
+    border-color: rgba(255, 121, 221, 0.56);
   }
 
   .decode-result {
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    min-height: 0;
-    flex: 1;
+    gap: 10px;
   }
 
   .decode-output {
     width: 100%;
-    min-height: 0;
-    flex: 1;
+    min-height: 220px;
     padding: 16px;
     border: 1px solid var(--line-strong);
     border-radius: 18px;
-    resize: none;
+    resize: vertical;
     background:
       linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent 24%),
-      repeating-linear-gradient(
-        180deg,
-        transparent 0,
-        transparent 32px,
-        rgba(255, 255, 255, 0.04) 32px,
-        rgba(255, 255, 255, 0.04) 33px
-      ),
-      rgba(5, 8, 18, 0.86);
+      rgba(5, 8, 18, 0.82);
     color: var(--ink);
-    font: 500 0.98rem/1.7 var(--font-body);
+    font: 500 0.96rem/1.65 var(--font-mono);
   }
 
   .decode-error {
     margin: 0;
     padding: 12px 14px;
-    border: 1px dotted rgba(255, 121, 221, 0.66);
+    border: 1px dotted rgba(255, 120, 217, 0.72);
     border-radius: 18px;
-    background: rgba(34, 10, 32, 0.64);
     color: var(--ink);
+    background: rgba(32, 10, 32, 0.62);
   }
 
   .preview-shell {
     position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex: 1;
-    min-height: 0;
     overflow: hidden;
-    border: 1px solid var(--line-strong);
+    flex: 1;
+    min-height: 320px;
     border-radius: 18px;
+    border: 1px solid var(--line-strong);
     background:
       radial-gradient(circle at 50% 18%, rgba(255, 157, 0, 0.12), transparent 28%),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent 24%),
       var(--paper-soft);
-    padding: 14px;
   }
 
-  .preview-shell canvas {
+  canvas {
     display: block;
-    max-width: 100%;
-    max-height: 100%;
-    width: auto;
-    height: auto;
-    background: transparent;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
   }
 
   .preview-empty {
     position: absolute;
     inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    display: grid;
+    place-items: center;
     color: var(--ink-faint);
-    font: 700 0.8rem/1 var(--font-mono);
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    pointer-events: none;
+  }
+
+  .artifact-preview {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding-top: 12px;
+  }
+
+  .artifact-preview img {
+    display: block;
+    width: 100%;
+    max-height: 240px;
+    object-fit: contain;
+    border-radius: 18px;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    background: rgba(7, 9, 20, 0.88);
+  }
+
+  .text-preview pre {
+    margin: 0;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: var(--ink-soft);
+    font: 500 0.92rem/1.6 var(--font-mono);
+  }
+
+  @media (max-width: 980px) {
+    .decode-output {
+      min-height: 180px;
+    }
+
+    .preview-shell {
+      min-height: 240px;
+    }
   }
 </style>
